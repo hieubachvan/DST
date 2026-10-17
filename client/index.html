@@ -21,6 +21,8 @@
       <div id="toolbar">
         <button id="tb-craft" title="Bảng chế tạo (C)">🛠️<span>Chế tạo</span></button>
         <button id="tb-chat" title="Chat (Enter)">💬<span>Chat</span></button>
+        <button id="tb-map" title="Bản đồ (Tab)">🗺️<span>Bản đồ</span></button>
+        <button id="tb-sound" title="Bật / tắt âm thanh (M)">🔊<span>Âm thanh</span></button>
         <button id="tb-pad" title="Ẩn / hiện cần điều khiển">🕹️<span>Cần điều khiển</span></button>
         <button id="guide-btn" title="Hướng dẫn (H)">❓<span>Hướng dẫn</span></button>
         <button id="tb-full" title="Toàn màn hình">⛶<span>Toàn màn hình</span></button>
@@ -70,6 +72,19 @@
         <button id="act-attack"><b>⚔️</b><small>Tấn công</small></button>
       </div>
 
+      <!-- Bản đồ thu nhỏ: Tab (máy tính) hoặc nút 🗺️ -->
+      <div id="map" hidden>
+        <div id="map-head">
+          <b>🗺️ Bản đồ</b>
+          <button id="map-in" title="Phóng to">＋</button>
+          <button id="map-out" title="Thu nhỏ">－</button>
+          <button id="map-fit" title="Thu phóng để thấy mọi người">👥</button>
+          <button id="map-close" title="Đóng (Tab / Esc)">✕</button>
+        </div>
+        <canvas id="map-canvas"></canvas>
+        <small id="map-legend"><i class="lg-me"></i>Bạn · <i class="lg-pl"></i>Người chơi · <i class="lg-fire"></i>Lửa · <i class="lg-mob"></i>Quái · ✦ Hồi sinh</small>
+      </div>
+
       <!-- Menu khi giữ lâu vào một ô đồ -->
       <div id="sheet" hidden>
         <div id="sheet-title"></div>
@@ -79,7 +94,7 @@
 
       <div id="help">
         <b>WASD</b> di chuyển · <b>Space</b> thu thập · <b>F</b> tấn công · <b>Click</b> đi tới / tương tác ·
-        <b>1–0</b> dùng đồ · <b>Chuột phải</b> vào đồ: nướng / vứt · <b>C</b> chế tạo · <b>H</b> hướng dẫn
+        <b>1–0</b> dùng đồ · <b>Chuột phải</b> vào đồ: nướng / vứt · <b>C</b> chế tạo · <b>Tab</b> bản đồ · <b>M</b> âm thanh · <b>H</b> hướng dẫn
       </div>
 
     </div>
@@ -134,7 +149,7 @@
             <li><b>Bóng tối</b>: ban đêm đứng ngoài vùng sáng khoảng 4 giây sẽ bị tấn công mất 40 máu, và cứ thế lặp lại.</li>
             <li><b>🕷️ Nhện</b>: sống trong rừng, ban đêm kéo tới chỗ người chơi. Đánh bằng giáo, hoặc chạy thoát (bạn chạy nhanh hơn nhện).</li>
             <li><b>🐕 Chó săn</b>: khoảng từ ngày 4, cứ vài ngày lại có một đàn kéo tới tấn công từng người chơi. Sẽ có cảnh báo "tiếng gầm gừ" khoảng 25 giây trước. Chó săn chạy nhanh hơn bạn nên không chạy thoát được: hãy mặc giáp, cầm giáo và đứng cạnh đồng đội. Càng về sau đàn càng đông.</li>
-            <li><b>Chết</b>: rơi toàn bộ đồ tại chỗ, thành hồn ma và hồi sinh ở giữa bản đồ sau 12 giây. Quay lại chỗ cũ để nhặt đồ.</li>
+            <li><b>Chết</b>: rơi toàn bộ đồ tại chỗ, thành hồn ma và hồi sinh ở giữa bản đồ sau 12 giây. Quay lại chỗ cũ để nhặt đồ. Vừa hồi sinh thì có <b>25 giây</b> bóng tối chưa tấn công được (nhân vật nhấp nháy). Hồi sinh lúc chạng vạng hoặc ban đêm thì được cầm sẵn một <b>🔥 Đuốc</b>.</li>
           </ul>
         </section>
         <section data-tab="craft" hidden>
@@ -165,6 +180,8 @@
             <tr><td><kbd>Enter</kbd></td><td>Chat với người chơi khác</td></tr>
             <tr><td><kbd>H</kbd></td><td>Mở / đóng bảng hướng dẫn này</td></tr>
             <tr><td><kbd>C</kbd></td><td>Ẩn / hiện bảng chế tạo</td></tr>
+            <tr><td><kbd>M</kbd></td><td>Bật / tắt âm thanh</td></tr>
+            <tr><td><kbd>Tab</kbd></td><td>Mở / đóng bản đồ: thấy địa hình và vị trí mọi người chơi. Lăn chuột trên bản đồ để thu phóng</td></tr>
           </table>
           <h3>Trên điện thoại, máy tính bảng</h3>
           <table class="keys">
@@ -174,7 +191,7 @@
             <tr><td>Giữ nút ⚔️</td><td>Tấn công quái gần nhất</td></tr>
             <tr><td>Chạm vào ô đồ</td><td>Ăn / trang bị / dùng</td></tr>
             <tr><td>Giữ lâu vào ô đồ</td><td>Mở menu: xem thông tin, nướng, phơi, vứt</td></tr>
-            <tr><td>Nút 🛠️ 💬 ❓ ⛶</td><td>Chế tạo, chat, hướng dẫn, toàn màn hình</td></tr>
+            <tr><td>Nút 🛠️ 💬 🗺️ 🔊 ❓ ⛶</td><td>Chế tạo, chat, bản đồ, âm thanh, hướng dẫn, toàn màn hình</td></tr>
             <tr><td>Nút 🕹️</td><td>Bật / tắt cần điều khiển và nút ✋ ⚔️ (mặc định tắt: chạm vào màn hình để đi và tương tác)</td></tr>
           </table>
           <p>Mẹo: xoay ngang điện thoại để thấy được nhiều hơn.</p>

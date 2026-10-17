@@ -19,6 +19,7 @@ const MOB_DESPAWN = 2600; // quái ở quá xa mọi người chơi sẽ bị x�
 const TICK_MS = 50;
 const HUNGER_RATE = MAX_HUNGER / 480; // no -> đói trong khoảng 8 phút
 const RESPAWN_MS = 12000;
+const RESPAWN_SAFE_MS = 25000; // vừa hồi sinh thì bóng tối chưa tấn công được trong chừng này thời gian
 const COLORS = [0xe05d5d, 0x5d9be0, 0x6fd06f, 0xe0c35d, 0xb86fe0, 0xe08f5d, 0x5de0d0, 0xe05db3];
 
 // Ngủ trong lều (mỗi giây): hồi tinh thần, hồi máu, đói thêm.
@@ -287,7 +288,9 @@ export class Game {
     if (r?.respawn) this.respawnQueue.push({ type: e.type, x: e.x, y: e.y, at: this.t + r.respawn });
   }
 
+  // Đồ tạm (đuốc tặng lúc hồi sinh) không bao giờ nằm lại trên đất: chết hay vứt đi là mất luôn.
   spawnDrop(x, y, item) {
+    if (item.temp) return;
     this.addEnt('drop', x, y, { item: { ...item } });
   }
 
@@ -377,7 +380,7 @@ export class Game {
       ready: false, chunks: new Set(), ccx: null, ccy: null,
       hp: MAX_HP, hunger: MAX_HUNGER, sanity: MAX_SANITY, survived: 0,
       inv: Array(INV_SIZE).fill(null), gear: emptyGear(), chest: null,
-      dead: false, respawnAt: 0, lastAct: 0, lastPos: Date.now(), allow: 0, dark: 0, warned: false, sleep: null,
+      dead: false, respawnAt: 0, safeUntil: 0, lastAct: 0, lastPos: Date.now(), allow: 0, dark: 0, warned: false, sleep: null,
     };
     // Nhân vật cũ còn sống thì khôi phục nguyên trạng; đã chết lúc thoát thì bắt đầu lại từ đầu.
     if (saved && !saved.dead) {
@@ -546,6 +549,15 @@ export class Game {
     p.x = SPAWN.x + rand(-60, 60);
     p.y = SPAWN.y + rand(-60, 60);
     p.allow = 0;
+    p.dark = 0;
+    p.warned = false;
+    // Không bị bóng tối tấn công một lúc; hồi sinh lúc chạng vạng / ban đêm thì được cầm sẵn một cây đuốc.
+    p.safeUntil = Date.now() + RESPAWN_SAFE_MS;
+    if (phaseAt(this.t) !== 'day') {
+      p.gear.hand = { id: 'torch', count: 1, dur: ITEMS.torch.uses, temp: true }; // đuốc tạm: không rơi ra, không cất được
+      this.sendInv(p);
+      this.say(p, 'Trời tối rồi... may mà có cây đuốc.');
+    }
     this.updateChunks(p);
     p.socket.emit('teleport', { x: p.x, y: p.y });
     p.socket.emit('respawned');
@@ -914,6 +926,7 @@ export class Game {
     const slot = Number(d?.slot);
     const it = p.inv[slot];
     if (!c || !it) return;
+    if (it.temp) return this.fail(p, 'Đuốc tạm không cất vào rương được.');
     const left = addToSlots(c.slots, it.id, it.count, it.dur, packed(it));
     if (left === it.count) return this.fail(p, 'Rương đầy rồi.');
     if (left > 0) it.count = left;
@@ -979,7 +992,7 @@ export class Game {
 
     const ps = [];
     for (const p of this.players.values()) {
-      ps.push([p.id, Math.round(p.x), Math.round(p.y), p.dead ? 1 : 0, p.gear.hand?.id || 0, p.gear.head?.id || 0, p.gear.body?.id || 0, p.sleep ? 1 : 0]);
+      ps.push([p.id, Math.round(p.x), Math.round(p.y), p.dead ? 1 : 0, p.gear.hand?.id || 0, p.gear.head?.id || 0, p.gear.body?.id || 0, p.sleep ? 1 : 0, now < p.safeUntil ? 1 : 0]);
     }
     const t = Math.round(this.t * 100) / 100;
     for (const p of this.players.values()) {
@@ -1047,7 +1060,7 @@ export class Game {
     if (burned && this.tickCount % 20 === 0) this.sendInv(p);
 
     // Charlie: đứng trong bóng tối quá lâu sẽ bị tấn công.
-    if (phase === 'night' && !lit) {
+    if (phase === 'night' && !lit && now >= p.safeUntil) {
       p.dark += dt;
       if (p.dark > 1 && !p.warned) {
         p.warned = true;

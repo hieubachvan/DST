@@ -3,6 +3,7 @@ import {
   ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, biomeAt, fireRadius, darknessAt,
 } from '../../shared/data.js';
 import { makeTextures } from './textures.js';
+import { Minimap } from './minimap.js';
 import { art, itemSprite, isGolden, GOLD_TINT, SPRITE_URL } from './art.js';
 
 // Chiều cao hiển thị (pixel thế giới) của từng sprite thật. Hình vẽ bằng code giữ nguyên cỡ.
@@ -136,6 +137,8 @@ export class GameScene extends Phaser.Scene {
     this.hud.setClock(this.worldT);
     this.hud.setStations(this.nearStations());
     this.tip =document.getElementById('tip');
+    this.minimap = new Minimap(this);
+    this.hud.minimap = this.minimap;
 
     this.bindSocket();
     this.socket.emit('ready');
@@ -198,7 +201,7 @@ export class GameScene extends Phaser.Scene {
   onSnap(snap) {
     this.worldT = snap.t;
     const seen = new Set();
-    for (const [id, x, y, dead, eq, head, body, asleep] of snap.p) {
+    for (const [id, x, y, dead, eq, head, body, asleep, safe] of snap.p) {
       seen.add(id);
       let pl = this.players.get(id);
       if (!pl) {
@@ -213,6 +216,7 @@ export class GameScene extends Phaser.Scene {
       pl.headGear = head || null;
       pl.bodyGear = body || null;
       pl.asleep = !!asleep;
+      pl.safe = !!safe;
     }
     for (const [id, pl] of this.players) {
       if (!seen.has(id) && id !== this.myId) this.destroyPlayer(pl);
@@ -806,6 +810,7 @@ export class GameScene extends Phaser.Scene {
     this.updateHover();
     this.overlayAt = this.placeOverlays();
     this.drawDarkness(time);
+    this.minimap.update();
 
     this.labelTimer += delta;
     if (pad.touch && pad.padVisible && this.labelTimer > 200) {
@@ -832,7 +837,8 @@ export class GameScene extends Phaser.Scene {
 
   drawPlayer(pl, time) {
     pl.c.setPosition(pl.x, pl.y).setDepth(pl.y);
-    pl.c.setAlpha(pl.asleep && !pl.dead ? 0.35 : 1); // đang ngủ trong lều
+    // Mờ khi đang ngủ trong lều; nhấp nháy khi vừa hồi sinh (bóng tối chưa tấn công được)
+    pl.c.setAlpha(pl.dead ? 1 : pl.asleep ? 0.35 : pl.safe ? 0.65 + Math.sin(time * 0.012) * 0.3 : 1);
     const alive = !pl.dead;
     const parts = pl.sprite ? [pl.sprite] : [pl.legs, pl.body, pl.head, pl.hair];
     for (const part of [...parts, pl.armor, pl.hat, pl.ring, pl.c.list[1]]) part.setVisible(alive);

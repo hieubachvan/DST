@@ -4,6 +4,7 @@ import {
 } from '../../shared/data.js';
 import { iconHtml, spriteImg } from './art.js';
 import { Controls } from './touch.js';
+import { Sound } from './audio.js';
 
 const LONG_PRESS_MS = 420;
 
@@ -117,6 +118,11 @@ export class Hud {
     $('tb-craft').addEventListener('click', () => this.setCraftOpen(!$('craft').classList.contains('open'), true));
     $('craft-close').addEventListener('click', () => this.setCraftOpen(false, true));
     $('tb-chat').addEventListener('click', () => this.toggleChat());
+    this.minimap = null; // GameScene gắn vào khi đã vào game
+    $('tb-map').addEventListener('click', () => this.minimap?.toggle());
+    this.sound = new Sound();
+    this.renderSoundBtn();
+    $('tb-sound').addEventListener('click', () => this.toggleSound());
     $('roster').addEventListener('click', () => $('roster').classList.toggle('open'));
 
     this.gearEls = {};
@@ -302,6 +308,17 @@ export class Hud {
     if (!open) $('chatin').blur();
   }
 
+  toggleSound() {
+    this.sound.setMuted(!this.sound.muted);
+    this.renderSoundBtn();
+  }
+
+  renderSoundBtn() {
+    const btn = $('tb-sound');
+    btn.firstChild.textContent = this.sound.muted ? '🔇' : '🔊';
+    btn.classList.toggle('on', !this.sound.muted);
+  }
+
   toggleChat() {
     if (!this.controls.touch) return $('chatin').focus();
     const open = !document.body.classList.contains('chat-open');
@@ -387,10 +404,17 @@ export class Hud {
       if (this.typing) return chatin.blur();
       if (this.sheetSlot !== null) return this.closeSheet();
       if (this.chestId) return this.closeChest();
+      if (this.minimap?.open) return this.minimap.toggle(false);
     }
     if (this.typing) return;
+    if (e.key === 'Tab') {
+      e.preventDefault(); // không cho trình duyệt chuyển focus
+      if (!e.repeat) this.minimap?.toggle();
+      return;
+    }
     if (e.key === 'h' || e.key === 'H') return this.toggleGuide(true);
     if (e.key === 'c' || e.key === 'C') return this.setCraftOpen(!$('craft').classList.contains('open'), true);
+    if (e.key === 'm' || e.key === 'M') return this.toggleSound();
     if (/^[0-9]$/.test(e.key)) {
       const slot = e.key === '0' ? 9 : Number(e.key) - 1;
       this.socket.emit(this.chestId ? 'chest:store' : 'use', { slot });
@@ -498,6 +522,7 @@ export class Hud {
     const d = t % DAY_LEN;
     const ph = phaseAt(t);
     if (ph !== this.lastPhase) {
+      if (this.lastPhase) this.sound.phase(ph); // không phát lúc vừa vào game
       this.lastPhase = ph;
       const img = spriteImg({ day: 'ui_sun', dusk: 'ui_sunset', night: 'ui_moon' }[ph], 'clock-ic');
       $('clock-ic').innerHTML = img ?? '';

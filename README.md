@@ -132,4 +132,4 @@ Thế giới chia thành các chunk 1000×1000. Server chỉ tạo chunk khi có
 
 - Chunk đã tạo được giữ lại mãi, nên nếu đi khám phá rất xa thì dữ liệu của server sẽ lớn dần.
 - Chỉ có một tài khoản admin.
-- Chưa có âm thanh.
+- Âm thanh mới có nhạc nền và nhạc chuyển buổi (sáng, chạng vạng) trong `client/public/sounds/`, chưa có tiếng động khi chặt, đánh, ăn…
