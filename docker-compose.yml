@@ -1,0 +1,15 @@
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      DATA_DIR: /data
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?đặt ADMIN_PASSWORD trong file .env}
+    volumes:
+      - gamedata:/data
+
+volumes:
+  gamedata:
