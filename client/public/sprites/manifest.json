@@ -1,0 +1,626 @@
+{
+ "player_idle": [
+  49,
+  87
+ ],
+ "player_walk1": [
+  49,
+  85
+ ],
+ "player_walk2": [
+  47,
+  84
+ ],
+ "player_walk3": [
+  46,
+  80
+ ],
+ "player_run1": [
+  45,
+  78
+ ],
+ "player_run2": [
+  44,
+  75
+ ],
+ "player_run3": [
+  46,
+  79
+ ],
+ "player_hurt": [
+  32,
+  72
+ ],
+ "player_die": [
+  38,
+  58
+ ],
+ "rabbit": [
+  34,
+  64
+ ],
+ "spider": [
+  69,
+  48
+ ],
+ "pig": [
+  61,
+  60
+ ],
+ "crow": [
+  65,
+  49
+ ],
+ "bunnyman": [
+  36,
+  73
+ ],
+ "beefalo": [
+  77,
+  87
+ ],
+ "campfire": [
+  66,
+  74
+ ],
+ "chest": [
+  56,
+  51
+ ],
+ "science": [
+  66,
+  89
+ ],
+ "crockpot": [
+  57,
+  67
+ ],
+ "tent": [
+  83,
+  99
+ ],
+ "dryingrack": [
+  82,
+  87
+ ],
+ "firepit": [
+  52,
+  52
+ ],
+ "tree": [
+  65,
+  94
+ ],
+ "tree2": [
+  74,
+  94
+ ],
+ "birch": [
+  69,
+  86
+ ],
+ "dead_tree": [
+  50,
+  89
+ ],
+ "grass": [
+  62,
+  61
+ ],
+ "tall_grass": [
+  67,
+  68
+ ],
+ "bush_berries": [
+  72,
+  68
+ ],
+ "bush": [
+  42,
+  48
+ ],
+ "boulder": [
+  38,
+  37
+ ],
+ "flower0": [
+  45,
+  54
+ ],
+ "flower1": [
+  45,
+  56
+ ],
+ "flower2": [
+  43,
+  52
+ ],
+ "flower3": [
+  46,
+  54
+ ],
+ "flower4": [
+  47,
+  59
+ ],
+ "rose": [
+  53,
+  63
+ ],
+ "log": [
+  53,
+  57
+ ],
+ "rocks": [
+  58,
+  54
+ ],
+ "gold": [
+  55,
+  52
+ ],
+ "iron": [
+  58,
+  53
+ ],
+ "flint": [
+  48,
+  56
+ ],
+ "twigs": [
+  49,
+  56
+ ],
+ "cutgrass": [
+  45,
+  58
+ ],
+ "rope": [
+  46,
+  38
+ ],
+ "cutstone": [
+  44,
+  42
+ ],
+ "boards": [
+  46,
+  43
+ ],
+ "charcoal": [
+  44,
+  47
+ ],
+ "meat": [
+  55,
+  50
+ ],
+ "cookedmeat": [
+  59,
+  51
+ ],
+ "monstermeat": [
+  55,
+  59
+ ],
+ "cookedmonstermeat": [
+  57,
+  57
+ ],
+ "morsel": [
+  39,
+  36
+ ],
+ "cookedmorsel": [
+  44,
+  47
+ ],
+ "egg": [
+  37,
+  50
+ ],
+ "berries": [
+  58,
+  51
+ ],
+ "roastedberries": [
+  55,
+  42
+ ],
+ "jam": [
+  40,
+  53
+ ],
+ "meatballs": [
+  59,
+  44
+ ],
+ "ratatouille": [
+  55,
+  47
+ ],
+ "monsterstew": [
+  59,
+  46
+ ],
+ "carrot": [
+  44,
+  57
+ ],
+ "pumpkin": [
+  51,
+  52
+ ],
+ "salve": [
+  32,
+  64
+ ],
+ "bandage": [
+  40,
+  40
+ ],
+ "axe": [
+  56,
+  55
+ ],
+ "pickaxe": [
+  52,
+  53
+ ],
+ "shovel": [
+  50,
+  59
+ ],
+ "hammer": [
+  59,
+  53
+ ],
+ "spear": [
+  47,
+  59
+ ],
+ "torch": [
+  40,
+  64
+ ],
+ "trap": [
+  48,
+  35
+ ],
+ "backpack": [
+  47,
+  55
+ ],
+ "ui_health": [
+  65,
+  66
+ ],
+ "ui_hunger": [
+  65,
+  66
+ ],
+ "ui_sanity": [
+  65,
+  66
+ ],
+ "ui_sun": [
+  50,
+  51
+ ],
+ "ui_sunset": [
+  55,
+  55
+ ],
+ "ui_moon": [
+  54,
+  55
+ ],
+ "skull": [
+  38,
+  41
+ ],
+ "player_idle_down": [
+  54,
+  107
+ ],
+ "player_idle_down_right": [
+  52,
+  107
+ ],
+ "player_idle_up": [
+  52,
+  109
+ ],
+ "player_idle_right": [
+  52,
+  108
+ ],
+ "player_idle_up_right": [
+  51,
+  108
+ ],
+ "player_walk_down": [
+  52,
+  101
+ ],
+ "player_walk_down_right": [
+  52,
+  104
+ ],
+ "player_walk_up": [
+  50,
+  104
+ ],
+ "player_walk_right": [
+  50,
+  104
+ ],
+ "player_walk_up_right": [
+  49,
+  103
+ ],
+ "player_run_down": [
+  53,
+  101
+ ],
+ "player_run_down_right": [
+  52,
+  98
+ ],
+ "player_run_up": [
+  51,
+  101
+ ],
+ "player_run_right": [
+  54,
+  101
+ ],
+ "player_run_up_right": [
+  51,
+  101
+ ],
+ "player_chop_0": [
+  46,
+  70
+ ],
+ "player_chop_1": [
+  46,
+  73
+ ],
+ "player_chop_2": [
+  34,
+  75
+ ],
+ "player_chop_3": [
+  34,
+  76
+ ],
+ "player_chop_4": [
+  33,
+  74
+ ],
+ "player_chop_5": [
+  35,
+  73
+ ],
+ "player_chop_6": [
+  38,
+  73
+ ],
+ "player_chop_7": [
+  29,
+  73
+ ],
+ "player_mine_0": [
+  53,
+  74
+ ],
+ "player_mine_1": [
+  46,
+  75
+ ],
+ "player_mine_2": [
+  44,
+  74
+ ],
+ "player_mine_3": [
+  45,
+  73
+ ],
+ "player_mine_4": [
+  44,
+  74
+ ],
+ "player_mine_5": [
+  42,
+  74
+ ],
+ "player_mine_6": [
+  39,
+  74
+ ],
+ "player_mine_7": [
+  30,
+  74
+ ],
+ "player_hurt_red": [
+  41,
+  69
+ ],
+ "player_dead": [
+  71,
+  39
+ ],
+ "rabbit_dir_0": [
+  31,
+  49
+ ],
+ "rabbit_dir_1": [
+  27,
+  48
+ ],
+ "rabbit_dir_2": [
+  35,
+  49
+ ],
+ "rabbit_dir_3": [
+  28,
+  50
+ ],
+ "rabbit_dir_4": [
+  34,
+  47
+ ],
+ "rabbit_dir_5": [
+  28,
+  49
+ ],
+ "rabbit_dir_6": [
+  23,
+  49
+ ],
+ "spider_dir_0": [
+  51,
+  32
+ ],
+ "spider_dir_1": [
+  48,
+  33
+ ],
+ "spider_dir_2": [
+  48,
+  36
+ ],
+ "spider_dir_3": [
+  47,
+  33
+ ],
+ "spider_dir_4": [
+  50,
+  31
+ ],
+ "spider_dir_5": [
+  52,
+  33
+ ],
+ "spider_dir_6": [
+  48,
+  35
+ ],
+ "hound_dir_0": [
+  49,
+  62
+ ],
+ "hound_dir_1": [
+  46,
+  69
+ ],
+ "hound_dir_2": [
+  46,
+  66
+ ],
+ "hound_dir_3": [
+  47,
+  67
+ ],
+ "hound_dir_4": [
+  51,
+  68
+ ],
+ "hound_dir_5": [
+  43,
+  64
+ ],
+ "hound_dir_6": [
+  47,
+  63
+ ],
+ "pig_dir_0": [
+  47,
+  50
+ ],
+ "pig_dir_1": [
+  47,
+  45
+ ],
+ "pig_dir_2": [
+  45,
+  46
+ ],
+ "pig_dir_3": [
+  47,
+  45
+ ],
+ "pig_dir_4": [
+  47,
+  40
+ ],
+ "pig_dir_5": [
+  51,
+  44
+ ],
+ "pig_dir_6": [
+  52,
+  40
+ ],
+ "crow_dir_0": [
+  39,
+  39
+ ],
+ "crow_dir_1": [
+  36,
+  34
+ ],
+ "crow_dir_2": [
+  41,
+  38
+ ],
+ "crow_dir_3": [
+  39,
+  40
+ ],
+ "crow_dir_4": [
+  37,
+  39
+ ],
+ "crow_dir_5": [
+  34,
+  39
+ ],
+ "crow_dir_6": [
+  33,
+  41
+ ],
+ "campfire_anim_0": [
+  32,
+  36
+ ],
+ "campfire_anim_1": [
+  32,
+  36
+ ],
+ "campfire_anim_2": [
+  28,
+  35
+ ],
+ "campfire_anim_3": [
+  31,
+  28
+ ],
+ "campfire_anim_4": [
+  30,
+  35
+ ],
+ "campfire_anim_5": [
+  29,
+  36
+ ],
+ "campfire_anim_6": [
+  30,
+  36
+ ],
+ "campfire_anim_7": [
+  33,
+  35
+ ]
+}

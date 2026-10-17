@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#2a2017" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Đừng Chết Đói — Cùng Nhau</title>
+    <link rel="icon" href="/sprites/campfire.png" />
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="vignette"></div>
+    <div id="flash"></div>
+
+    <div id="hud" hidden>
+      <div id="roster"></div>
+
+      <!-- Thanh nút: chế tạo, chat, hướng dẫn, toàn màn hình -->
+      <div id="toolbar">
+        <button id="tb-craft" title="Bảng chế tạo (C)">🛠️<span>Chế tạo</span></button>
+        <button id="tb-chat" title="Chat (Enter)">💬<span>Chat</span></button>
+        <button id="tb-pad" title="Ẩn / hiện cần điều khiển">🕹️<span>Cần điều khiển</span></button>
+        <button id="guide-btn" title="Hướng dẫn (H)">❓<span>Hướng dẫn</span></button>
+        <button id="tb-full" title="Toàn màn hình">⛶<span>Toàn màn hình</span></button>
+      </div>
+
+      <div id="stats">
+        <div id="clock">
+          <div id="hand"></div>
+          <div id="clock-face"><span id="clock-ic"></span><b id="dayNum">Ngày 1</b><small id="phase">Ban ngày</small></div>
+        </div>
+        <div class="stat" id="st-hp" title="Máu"><div class="fill"></div><span>❤️</span><b>150</b></div>
+        <div class="stat" id="st-hunger" title="Độ no"><div class="fill"></div><span>🍗</span><b>150</b></div>
+        <div class="stat" id="st-sanity" title="Tinh thần"><div class="fill"></div><span>🧠</span><b>200</b></div>
+      </div>
+
+      <div id="craft">
+        <button id="craft-close" class="drawer-close" title="Đóng">✕</button>
+        <div id="craft-tabs"></div>
+        <h3 id="craft-title">Chế tạo</h3>
+        <div id="recipes"></div>
+      </div>
+
+      <div id="chest" hidden>
+        <h3>🧰 Rương <button id="chest-close" title="Đóng (Esc)">✕</button></h3>
+        <div id="chest-slots"></div>
+        <small>Bấm đồ trong rương để lấy · Bấm đồ trong túi để cất vào</small>
+      </div>
+
+      <div id="bar">
+        <div id="pack" hidden title="Ba lô"></div>
+        <div id="inv"></div>
+        <div id="gear"></div>
+      </div>
+
+      <div id="chat">
+        <div id="chatlog"></div>
+        <form id="chatform">
+          <input id="chatin" maxlength="120" placeholder="Nhấn Enter để chat" autocomplete="off" enterkeyhint="send" />
+          <button id="chatsend" type="submit" title="Gửi">➤</button>
+        </form>
+      </div>
+
+      <!-- Điều khiển cảm ứng: cần điều khiển bên trái, nút hành động bên phải -->
+      <div id="joy"><div id="joy-knob"></div></div>
+      <div id="actions">
+        <button id="act-gather"><b>✋</b><small id="act-gather-label">Thu thập</small></button>
+        <button id="act-attack"><b>⚔️</b><small>Tấn công</small></button>
+      </div>
+
+      <!-- Menu khi giữ lâu vào một ô đồ -->
+      <div id="sheet" hidden>
+        <div id="sheet-title"></div>
+        <div id="sheet-info"></div>
+        <div id="sheet-btns"></div>
+      </div>
+
+      <div id="help">
+        <b>WASD</b> di chuyển · <b>Space</b> thu thập · <b>F</b> tấn công · <b>Click</b> đi tới / tương tác ·
+        <b>1–0</b> dùng đồ · <b>Chuột phải</b> vào đồ: nướng / vứt · <b>C</b> chế tạo · <b>H</b> hướng dẫn
+      </div>
+
+    </div>
+
+    <div id="guide" class="overlay" hidden>
+      <div class="panel guide-panel">
+        <button class="guide-close" title="Đóng (Esc)">✕</button>
+        <h1>Hướng dẫn sinh tồn</h1>
+        <nav id="guide-tabs">
+          <button data-tab="start" class="on">Bắt đầu</button>
+          <button data-tab="craft">Chế tạo</button>
+          <button data-tab="res">Tài nguyên</button>
+          <button data-tab="food">Thức ăn</button>
+          <button data-tab="keys">Điều khiển</button>
+        </nav>
+        <section data-tab="start">
+          <h2>Mục tiêu: sống sót càng nhiều ngày càng tốt</h2>
+          <p>Một ngày dài 4 phút: <b class="c-day">ban ngày 2 phút</b>, <b class="c-dusk">chạng vạng 1 phút</b>, <b class="c-night">ban đêm 1 phút</b>. Đồng hồ ở góc phải trên cho biết đang là buổi nào.</p>
+          <h3>Ngày đầu tiên nên làm gì</h3>
+          <ol>
+            <li>Bẻ <b>🥢 cành cây</b> ở cây non và nhặt <b>🔷 đá lửa</b> trên mặt đất. Giữ <b>Space</b> để tự nhặt đồ gần nhất.</li>
+            <li>Chế tạo <b>🪓 Rìu</b> (1 cành + 1 đá lửa). Bấm vào rìu trong túi đồ để cầm lên tay.</li>
+            <li>Chặt cây lấy <b>🪵 gỗ</b>, cắt cỏ lấy <b>🌾 cỏ khô</b>. Hái <b>🫐 quả mọng</b> để ăn dần.</li>
+            <li>Trước khi trời tối, phải có <b>🏕️ Lửa trại</b> (3 cỏ + 2 gỗ) hoặc <b>🔥 Đuốc</b> (2 cỏ + 2 cành).</li>
+            <li>Ban đêm hãy đứng trong vùng sáng và thêm gỗ vào lửa trại để lửa không tắt.</li>
+          </ol>
+          <h3>Ba chỉ số cần giữ</h3>
+          <ul>
+            <li><b>❤️ Máu</b>: về 0 là chết. Hồi bằng thuốc đắp và đồ ăn nướng.</li>
+            <li><b>🍗 Độ no</b>: giảm dần theo thời gian (đầy bụng thì trụ được khoảng 8 phút). Về 0 thì bắt đầu mất máu.</li>
+            <li><b>🧠 Tinh thần</b>: giảm vào ban đêm và khi ở gần quái, tăng chậm vào ban ngày. Hái hoa được +5. Tinh thần thấp thì màn hình tối tím lại, về 0 thì mất máu.</li>
+          </ul>
+          <h3>Khoa học & công trình (sau khi đã sống qua đêm đầu)</h3>
+          <ol>
+            <li>Làm <b>⛏️ Cuốc chim</b>, đập tảng đá để lấy <b>🪨 đá</b> và <b>🪙 vàng</b> (không phải tảng nào cũng ra vàng).</li>
+            <li>Dựng <b>⚗️ Máy Khoa Học</b> (1 vàng + 4 gỗ + 4 đá) ở gần trại.</li>
+            <li>Đứng cạnh máy, các món có dấu <b>🔒</b> sẽ mở khóa: dây thừng, ván gỗ, gạch đá, búa, rương, giáp gỗ, mũ giáp, nồi nấu.</li>
+            <li>Dựng <b>🫕 Nồi nấu</b> để làm các món hầm rất no và hồi nhiều máu.</li>
+            <li>Thay lửa trại bằng <b>♨️ Hố lửa đá</b>: cháy lâu hơn, khi tắt vẫn còn, chỉ cần thêm củi.</li>
+            <li>Đặt <b>🪤 Bẫy thỏ</b> ở đồng cỏ để có thịt mà không phải đuổi theo thỏ.</li>
+          </ol>
+          <h3>Đếm ngày & lưu nhân vật</h3>
+          <ul>
+            <li><b>Ngày ở đồng hồ</b> là tuổi của thế giới, chung cho mọi người. Khi không còn ai online, thời gian thế giới tạm dừng.</li>
+            <li><b>Số ngày cạnh tên bạn</b> (danh sách online) là số ngày bạn sống sót liên tục, chỉ tính lúc online và còn sống. Chết thì tính lại từ 0.</li>
+            <li>Thoát game thì nhân vật được <b>lưu lại</b>: vào lại bằng cùng trình duyệt sẽ còn nguyên đồ đạc, máu và vị trí. Nếu thoát lúc đang là hồn ma thì vào lại sẽ bắt đầu từ đầu.</li>
+          </ul>
+          <h3>Trang bị</h3>
+          <p>Có 3 ô trang bị cạnh túi đồ: <b>✋ Tay</b> (công cụ, vũ khí, đuốc), <b>🎩 Mũ</b> (mũ giáp, vòng hoa), <b>👕 Giáp</b> (giáp gỗ). Mặc giáp khi đánh nhện, giáp chặn phần lớn sát thương nhưng sẽ mòn dần.</p>
+          <h3>Mối nguy</h3>
+          <ul>
+            <li><b>Bóng tối</b>: ban đêm đứng ngoài vùng sáng khoảng 4 giây sẽ bị tấn công mất 40 máu, và cứ thế lặp lại.</li>
+            <li><b>🕷️ Nhện</b>: sống trong rừng, ban đêm kéo tới chỗ người chơi. Đánh bằng giáo, hoặc chạy thoát (bạn chạy nhanh hơn nhện).</li>
+            <li><b>🐕 Chó săn</b>: khoảng từ ngày 4, cứ vài ngày lại có một đàn kéo tới tấn công từng người chơi. Sẽ có cảnh báo "tiếng gầm gừ" khoảng 25 giây trước. Chó săn chạy nhanh hơn bạn nên không chạy thoát được: hãy mặc giáp, cầm giáo và đứng cạnh đồng đội. Càng về sau đàn càng đông.</li>
+            <li><b>Chết</b>: rơi toàn bộ đồ tại chỗ, thành hồn ma và hồi sinh ở giữa bản đồ sau 12 giây. Quay lại chỗ cũ để nhặt đồ.</li>
+          </ul>
+        </section>
+        <section data-tab="craft" hidden>
+          <p>Bảng <b>Chế tạo</b> bên trái màn hình: công thức nào đủ nguyên liệu thì sáng lên, bấm vào là chế tạo. Số <span class="ok">xanh</span> nghĩa là đã đủ, <span class="no">đỏ</span> là còn thiếu.</p>
+          <div id="guide-recipes"></div>
+        </section>
+        <section data-tab="res" hidden>
+          <p>Thế giới có 3 vùng: <b>đồng cỏ</b> (xanh nhạt, nhiều cỏ, hoa, cà rốt), <b>rừng</b> (xanh đậm, nhiều cây và nhện) và <b>vùng đất đá</b> (nâu, nhiều tảng đá và đá lửa). Thế giới <b>không có biên giới</b>: cứ đi tiếp là sẽ có vùng đất mới.</p>
+          <p><b>Mọc lại:</b> cỏ, cây non, bụi quả mọng mọc lại tại chỗ sau 1–1,5 phút. Hoa, đá lửa sau 1 phút, cà rốt và cây sau 1,5 phút, tảng đá sau 2 phút, tất cả đều mọc lại đúng chỗ cũ.</p>
+          <div id="guide-res"></div>
+        </section>
+        <section data-tab="food" hidden>
+          <p>Bấm chuột trái vào thức ăn để ăn. Đứng gần lửa trại rồi <b>chuột phải</b> để nướng, đồ nướng bổ hơn và thịt quái nướng đỡ độc hơn.</p>
+          <div id="guide-food"></div>
+        </section>
+        <section data-tab="keys" hidden>
+          <table class="keys">
+            <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / mũi tên</td><td>Di chuyển</td></tr>
+            <tr><td>Click chuột trái</td><td>Đi tới chỗ đó, hoặc tương tác với vật / quái được bấm vào</td></tr>
+            <tr><td>Giữ <kbd>Space</kbd></td><td>Tự thu thập vật gần nhất (chặt cây nếu đang cầm rìu)</td></tr>
+            <tr><td>Giữ <kbd>F</kbd></td><td>Tấn công quái gần nhất</td></tr>
+            <tr><td>Chuột trái vào đồ trong túi</td><td>Ăn / trang bị / thêm củi vào lửa (khi đứng gần)</td></tr>
+            <tr><td>Chuột phải vào đồ trong túi</td><td>Nướng (khi đứng gần lửa), nếu không thì vứt xuống đất</td></tr>
+            <tr><td><kbd>1</kbd> … <kbd>0</kbd></td><td>Dùng nhanh ô 1–10 của túi đồ</td></tr>
+            <tr><td>Ô ✋ 🎩 👕 cạnh túi đồ</td><td>Bấm để cất đồ đang dùng vào túi</td></tr>
+            <tr><td>Click vào rương</td><td>Mở rương. Bấm đồ trong túi để cất, bấm đồ trong rương để lấy. Đi xa hoặc <kbd>Esc</kbd> để đóng</td></tr>
+            <tr><td>Click khi đang cầm 🔨 búa</td><td>Đập bỏ công trình, lấy lại một nửa nguyên liệu</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Chat với người chơi khác</td></tr>
+            <tr><td><kbd>H</kbd></td><td>Mở / đóng bảng hướng dẫn này</td></tr>
+            <tr><td><kbd>C</kbd></td><td>Ẩn / hiện bảng chế tạo</td></tr>
+          </table>
+          <h3>Trên điện thoại, máy tính bảng</h3>
+          <table class="keys">
+            <tr><td>Cần điều khiển góc trái dưới</td><td>Kéo để di chuyển</td></tr>
+            <tr><td>Chạm vào mặt đất / vật / quái</td><td>Đi tới chỗ đó hoặc tương tác</td></tr>
+            <tr><td>Giữ nút ✋</td><td>Tự thu thập vật gần nhất. Dòng chữ dưới nút cho biết sẽ làm gì</td></tr>
+            <tr><td>Giữ nút ⚔️</td><td>Tấn công quái gần nhất</td></tr>
+            <tr><td>Chạm vào ô đồ</td><td>Ăn / trang bị / dùng</td></tr>
+            <tr><td>Giữ lâu vào ô đồ</td><td>Mở menu: xem thông tin, nướng, phơi, vứt</td></tr>
+            <tr><td>Nút 🛠️ 💬 ❓ ⛶</td><td>Chế tạo, chat, hướng dẫn, toàn màn hình</td></tr>
+            <tr><td>Nút 🕹️</td><td>Bật / tắt cần điều khiển và nút ✋ ⚔️ (mặc định tắt: chạm vào màn hình để đi và tương tác)</td></tr>
+          </table>
+          <p>Mẹo: xoay ngang điện thoại để thấy được nhiều hơn.</p>
+        </section>
+      </div>
+    </div>
+
+    <div id="tip" hidden></div>
+    <div id="warn" hidden></div>
+
+    <div id="login" class="overlay">
+      <div class="panel login-panel">
+        <h1>Đừng Chết Đói</h1>
+        <p class="sub">Sinh tồn cùng bạn bè</p>
+
+        <section id="pick">
+          <h3>Chọn server</h3>
+          <div id="server-list"></div>
+          <p id="server-empty" class="muted" hidden>Chưa có server nào. Hãy nhờ admin tạo một server.</p>
+        </section>
+
+        <form id="login-form" hidden>
+          <button type="button" class="link" id="back">← Chọn server khác</button>
+          <h3 id="pick-name"></h3>
+          <input id="passcode" type="password" maxlength="32" placeholder="Passcode của server" autocomplete="off" />
+          <input id="name" maxlength="16" placeholder="Tên của bạn" autocomplete="off" />
+          <button type="submit">Vào thế giới</button>
+          <p id="login-status"></p>
+        </form>
+
+        <ul class="tips">
+          <li>Nhặt cành cây, cỏ và đá lửa để làm <b>rìu</b> và <b>đuốc</b>.</li>
+          <li>Trước khi trời tối, hãy đốt <b>lửa trại</b>. Bóng tối sẽ giết bạn.</li>
+          <li>Đừng để bụng đói. Hái quả mọng và cà rốt, nướng lên còn ngon hơn.</li>
+        </ul>
+        <button type="button" class="link small" id="admin-open">Quản trị server</button>
+      </div>
+    </div>
+
+    <div id="admin" class="overlay" hidden>
+      <div class="panel admin-panel">
+        <button type="button" class="guide-close" id="admin-close" title="Đóng">✕</button>
+        <h1>Quản trị server</h1>
+
+        <form id="admin-login">
+          <input id="admin-user" placeholder="Tài khoản" autocomplete="username" />
+          <input id="admin-pass" type="password" placeholder="Mật khẩu" autocomplete="current-password" />
+          <button type="submit">Đăng nhập</button>
+        </form>
+
+        <div id="admin-main" hidden>
+          <form id="admin-create" class="row">
+            <input id="new-name" maxlength="40" placeholder="Tên server mới" autocomplete="off" />
+            <input id="new-pass" maxlength="32" placeholder="Passcode (4–32 ký tự)" autocomplete="off" />
+            <button type="submit">Tạo server</button>
+          </form>
+          <div class="table-wrap"><table id="admin-servers"></table></div>
+          <button type="button" class="link small" id="admin-logout">Đăng xuất</button>
+        </div>
+        <p id="admin-status"></p>
+      </div>
+    </div>
+
+    <div id="dead" class="overlay" hidden>
+      <div class="panel">
+        <h1>Bạn đã chết</h1>
+        <p id="deadcause"></p>
+        <p>Hồi sinh sau <b id="deadcount">0</b> giây…</p>
+      </div>
+    </div>
+
+    <div id="disc" class="overlay" hidden>
+      <div class="panel">
+        <h1>Mất kết nối</h1>
+        <p id="disc-reason">Không còn kết nối tới máy chủ.</p>
+        <button onclick="location.reload()">Kết nối lại</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

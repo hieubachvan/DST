@@ -1,0 +1,27 @@
+{
+  "name": "dont-starve-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Game sinh tồn 2D nhiều người chơi trên web, lấy cảm hứng từ Don't Starve Together",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c yellow,cyan \"node --disable-warning=ExperimentalWarning --watch server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "sprites": "node tools/extract-sprites.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "concurrently": "^9.2.5",
+    "express": "^4.22.3",
+    "phaser": "^3.90.0",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
+    "vite": "^6.4.4"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
+  }
+}
