@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 // Bán kính khung nhìn của bản đồ (pixel thế giới, tính từ tâm ra mép), từ gần tới xa.
 const RANGES = [1200, 2400, 4800, 9600, 19200, 38400];
 const CELLS = 96; // số ô địa hình theo mỗi cạnh bản đồ
-const HOSTILE = new Set(['spider', 'hound']);
+const HOSTILE = new Set(['spider', 'hound', 'deerclops']);
 const BUILDINGS = new Set([...Object.keys(STATIONS), 'chest', 'tent', 'dryingrack', 'trap']);
 const FONT = 'Segoe UI, Tahoma, sans-serif';
 
@@ -155,7 +155,7 @@ export class Minimap {
       const [px, py] = toMap(m.x, m.y);
       if (!inside(px, py)) continue;
       ctx.beginPath();
-      ctx.arc(px, py, 2.5 * s, 0, Math.PI * 2);
+      ctx.arc(px, py, (m.type === 'deerclops' ? 6 : 2.5) * s, 0, Math.PI * 2);
       ctx.fill();
     }
 

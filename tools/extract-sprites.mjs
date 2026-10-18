@@ -26,6 +26,18 @@ const SHEETS = {
   s6: { file: 'ui-hud.png', mode: 'bg' },
   s7: { file: 'ui-decorations.png', mode: 'bg' },
   anim: { file: 'player-animations.png', mode: 'alpha' },
+  deer: { file: 'deerclops.png', mode: 'bg' },
+  boom: { file: 'boomerang.png', mode: 'bg' },
+};
+
+// Tấm deerclops.png: lưới 4 cột x 6 hàng (mỗi ô ~256px). Hàng 2 = đi, hàng 5 = vồ.
+// Bỏ các khung có chân đen dính vào nền tối (tách nền bị mất chân).
+const DEER_SPRITES = {
+  deerclops: ['deer', 55, 20, 200, 250],
+  ...Object.fromEntries([[45, 280, 215, 240], [295, 280, 200, 240], [545, 280, 200, 240]]
+    .map((b, i) => [`deerclops_walk_${i}`, ['deer', ...b]])),
+  deerclops_atk_0: ['deer', 40, 1060, 230, 230],
+  deerclops_atk_1: ['deer', 285, 1060, 245, 230],
 };
 
 // Nhãn cột trên tấm player-animations.png không khớp với hình vẽ (nhiều cột "Left" thực ra quay sang phải).
@@ -141,8 +153,14 @@ const SPRITES = {
   ui_sunset: ['s6', 1143, 48, 61, 61],
   ui_moon: ['s6', 1208, 47, 60, 62],
   skull: ['s7', 681, 39, 44, 46],
+  boomerang: ['boom', 35, 60, 160, 175],
   ...ANIM_SPRITES,
+  ...DEER_SPRITES,
 };
+
+// Hình rời đã có nền trong suốt: chép nguyên vẹn, không cắt.
+// Vụ nổ: https://agresko.itch.io/explosion-animation---7x (Marek Sefcik), xem assets/explosion/readme.txt
+const COPIES = Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [`explosion_${i}`, `explosion/explosion_${i}.png`]));
 
 const PAD = 3;
 const BG_STEP = 16; // khác biệt màu tối đa giữa 2 điểm nền liền nhau
@@ -309,6 +327,16 @@ for (const [name, [sheet, x, y, w, h]] of Object.entries(SPRITES)) {
   } catch (err) {
     console.warn(`Lỗi ${name}: ${err.message}`);
   }
+}
+for (const [name, file] of Object.entries(COPIES)) {
+  const p = path.join(ROOT, 'assets', file);
+  if (!fs.existsSync(p)) {
+    console.warn(`Bỏ qua ${file}: không tìm thấy`);
+    continue;
+  }
+  const png = PNG.sync.read(fs.readFileSync(p));
+  fs.copyFileSync(p, path.join(OUT, `${name}.png`));
+  manifest[name] = [png.width, png.height];
 }
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
 console.log(`Đã xuất ${Object.keys(manifest).length} hình vào ${path.relative(ROOT, OUT)}`);

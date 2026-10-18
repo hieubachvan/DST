@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {
-  ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, biomeAt, fireRadius, darknessAt,
+  ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, BOOMERANG, biomeAt, fireRadius, darknessAt,
 } from '../../shared/data.js';
 import { makeTextures } from './textures.js';
 import { Minimap } from './minimap.js';
@@ -11,7 +11,18 @@ const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
   campfire: 58, firepit: 46, chest: 42, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
-  rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, player: 68, item: 26,
+  rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, player: 68, item: 26,
+};
+const BOSS_WALK = [0, 1, 2, 1];
+// Vụ nổ khi Deerclops đập xuống: 7 khung, tự to dần rồi tan. Khung to nhất (354px) phủ vừa vùng đập.
+const EXPLOSION = [1, 2, 3, 4, 5, 6, 7].map((i) => `explosion_${i}`);
+const EXPLOSION_MAX_W = 354;
+const EXPLOSION_FRAME_MS = 60;
+const SOUND_RANGE = 1400; // xa hơn chừng này (pixel thế giới) thì không nghe thấy tiếng boss
+const ROAR_GAP_MS = 5000; // tiếng gầm dài ~4 giây, không cho chồng lên nhau
+// Tiếng khi nhặt / hái: loại vật -> âm thanh ("drop" = đồ rơi dưới đất)
+const PICK_SOUNDS = {
+  sapling: 'twig', grass: 'rustle', flower: 'rustle', bush: 'rustle', carrot: 'rustle', flint: 'pickup', drop: 'pickup',
 };
 // Texture trong game lấy từ sprite có tên khác
 const TEX_FROM_SPRITE = { sapling: 'dead_tree', hound: 'hound_dir_0' };
@@ -47,8 +58,8 @@ const DARK_DEPTH = 1e9;
 const UI_DEPTH = 2e9;
 const REPEAT_TYPES = new Set(['tree', 'boulder']);
 const STRUCTURES = new Set(RECIPES.filter((r) => r.place).map((r) => r.id));
-const MOB_NAMES = { spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông' };
-const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2 };
+const MOB_NAMES = { spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops' };
+const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4 };
 const DIGGABLE = new Set(['sapling', 'grass', 'bush']);
 const NAMES = {
   tree: 'Cây thông', boulder: 'Tảng đá', sapling: 'Cây non', grass: 'Bụi cỏ', bush: 'Bụi quả mọng',
@@ -86,13 +97,18 @@ export class GameScene extends Phaser.Scene {
     this.socket = socket;
     this.hud = hud;
     makeTextures(this);
+    for (const key of EXPLOSION) if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
 
     this.myId = init.you;
+    this.stunUntil = 0;
+    this.nextRoar = 0;
     this.worldT = init.t;
     this.ents = new Map();
     this.fires = new Set();
     this.players = new Map();
     this.mobs = new Map();
+    this.booms = new Map();
+    this.myBoomFlying = false;
     this.roster = new Map(init.players.map((r) => [r.id, r]));
     this.gear = { hand: null, head: null, body: null };
     this.stationTimer = 0;
@@ -201,7 +217,7 @@ export class GameScene extends Phaser.Scene {
   onSnap(snap) {
     this.worldT = snap.t;
     const seen = new Set();
-    for (const [id, x, y, dead, eq, head, body, asleep, safe] of snap.p) {
+    for (const [id, x, y, dead, eq, head, body, asleep, safe, stunned] of snap.p) {
       seen.add(id);
       let pl = this.players.get(id);
       if (!pl) {
@@ -217,6 +233,7 @@ export class GameScene extends Phaser.Scene {
       pl.bodyGear = body || null;
       pl.asleep = !!asleep;
       pl.safe = !!safe;
+      pl.stunned = !!stunned;
     }
     for (const [id, pl] of this.players) {
       if (!seen.has(id) && id !== this.myId) this.destroyPlayer(pl);
@@ -237,6 +254,29 @@ export class GameScene extends Phaser.Scene {
         if (this.hover?.o === m) this.setHover(null);
       }
     }
+
+    const seenBooms = new Set();
+    let mine = false;
+    for (const [id, x, y, owner] of snap.b ?? []) {
+      seenBooms.add(id);
+      if (owner === this.myId) mine = true;
+      let b = this.booms.get(id);
+      if (!b) {
+        const img = this.add.image(x, y, 'boomerang');
+        img.setScale(30 / img.height);
+        b = { img, x, y, tx: x, ty: y };
+        this.booms.set(id, b);
+      }
+      b.tx = x;
+      b.ty = y;
+    }
+    for (const [id, b] of this.booms) {
+      if (seenBooms.has(id)) continue;
+      b.img.destroy();
+      this.booms.delete(id);
+    }
+    this.myBoomFlying = mine;
+    this.hud.setBoss(snap.bo);
   }
 
   flushPos() {
@@ -406,6 +446,7 @@ export class GameScene extends Phaser.Scene {
     const armor = this.add.text(0, -18, '', { fontSize: '15px', fontFamily: FONT }).setOrigin(0.5);
     const hat = this.add.text(0, -54, '', { fontSize: '20px', fontFamily: FONT }).setOrigin(0.5);
     const ghost = this.add.image(0, -6, 'ghost').setOrigin(0.5, 1).setAlpha(0.6).setVisible(false);
+    const stars = this.add.text(0, 0, '💫', { fontSize: '20px', fontFamily: FONT }).setOrigin(0.5).setVisible(false);
     // Vòng màu dưới chân để phân biệt người chơi
     const ring = this.add.ellipse(0, 0, 36, 12, 0xffffff, 0.5);
     const itemImg = this.add.image(16, -24, 'shadow').setOrigin(0.5, 0.85).setVisible(false);
@@ -415,8 +456,8 @@ export class GameScene extends Phaser.Scene {
       for (const part of [legs, body, head, hair]) part.destroy();
     }
     c.add(sprite
-      ? [ring, shadow, sprite, armor, hat, item, itemImg, ghost]
-      : [ring, shadow, legs, body, armor, head, hair, hat, item, itemImg, ghost]);
+      ? [ring, shadow, sprite, armor, hat, item, itemImg, ghost, stars]
+      : [ring, shadow, legs, body, armor, head, hair, hat, item, itemImg, ghost, stars]);
 
     const label = this.add.text(0, 0, '', {
       fontSize: '13px', fontFamily: FONT, color: '#ffffff', stroke: '#000000', strokeThickness: 3,
@@ -427,7 +468,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(UI_DEPTH).setVisible(false);
 
     const pl = {
-      id, c, legs, body, head, hair, item, itemImg, armor, hat, ghost, label, bubble, ring, sprite,
+      id, c, legs, body, head, hair, item, itemImg, armor, hat, ghost, stars, label, bubble, ring, sprite,
       x: 0, y: 0, tx: 0, ty: 0, dead: false, eq: null, face: 1, moving: false, bubbleTimer: null, hurtUntil: 0,
     };
     this.applyRoster(pl);
@@ -458,9 +499,22 @@ export class GameScene extends Phaser.Scene {
     this.applyArt(body, type);
     c.add([shadow, body]);
     c.setSize(56, 40);
-    const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1 };
+    const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1, windupUntil: 0, slamUntil: 0 };
     this.mobs.set(id, m);
+    if (type === 'deerclops') this.roar(x, y);
     return m;
+  }
+
+  // Phát tiếng tại điểm (x, y) trong thế giới: càng xa nhân vật mình càng nhỏ.
+  playAt(name, x, y, rate = 1) {
+    const d = Math.hypot(this.me.x - x, this.me.y - y);
+    if (d < SOUND_RANGE) this.hud.sound.sfx(name, Math.max(0.15, 1 - d / SOUND_RANGE), rate);
+  }
+
+  roar(x, y) {
+    if (this.time.now < this.nextRoar) return;
+    this.nextRoar = this.time.now + ROAR_GAP_MS;
+    this.playAt('deerclops_voice', x, y);
   }
 
   bubble(id, text) {
@@ -489,9 +543,17 @@ export class GameScene extends Phaser.Scene {
   onFx(fx) {
     if (fx.by) this.swing(fx.by);
     switch (fx.k) {
+      case 'pick': {
+        const pl = this.players.get(fx.by);
+        if (pl && PICK_SOUNDS[fx.what]) this.playAt(PICK_SOUNDS[fx.what], pl.x, pl.y, 0.93 + Math.random() * 0.14);
+        break;
+      }
       case 'chop': {
         const o = this.ents.get(fx.id);
         if (!o) break;
+        // Lệch cao độ một chút để các nhát liên tiếp nghe không giống hệt nhau.
+        if (o.e.type === 'tree') this.playAt('chop', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
+        else if (o.e.type === 'boulder') this.playAt('mine', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
         this.tweens.add({ targets: o.spr, x: o.e.x + 4, duration: 50, yoyo: true, repeat: 1, onComplete: () => { o.spr.x = o.e.x; } });
         break;
       }
@@ -506,6 +568,44 @@ export class GameScene extends Phaser.Scene {
       case 'bite': {
         const m = this.mobs.get(fx.id);
         if (m) this.tweens.add({ targets: m.c, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
+        break;
+      }
+      // Boss gồng đòn: vẽ vùng sẽ bị đập (nằm trên lớp bóng tối để ban đêm vẫn thấy mà né).
+      case 'windup': {
+        const m = this.mobs.get(fx.id);
+        if (m) {
+          m.windupUntil = this.time.now + fx.ms;
+          m.face = fx.x < m.x ? -1 : 1;
+          this.roar(m.x, m.y);
+        }
+        const ring = this.add.circle(fx.x, fx.y, fx.r, 0xff3020, 0.12).setStrokeStyle(3, 0xff5040, 0.9).setDepth(DARK_DEPTH + 1);
+        const core = this.add.circle(fx.x, fx.y, fx.r, 0xff3020, 0.3).setDepth(DARK_DEPTH + 1).setScale(0);
+        const eye = this.add.circle(fx.x, fx.y, fx.sr ?? fx.r * 0.35, 0xff2010, 0.35).setDepth(DARK_DEPTH + 1); // tâm: đau nhất + choáng
+        this.tweens.add({ targets: core, scale: 1, duration: fx.ms, onComplete: () => { core.destroy(); ring.destroy(); eye.destroy(); } });
+        break;
+      }
+      case 'slam': {
+        const m = this.mobs.get(fx.id);
+        if (m) m.slamUntil = this.time.now + 400;
+        this.playAt('deerclops_boom', fx.x, fx.y);
+        if (this.textures.exists(EXPLOSION[0])) this.explode(fx.x, fx.y, fx.r);
+        else {
+          const wave = this.add.circle(fx.x, fx.y, fx.r * 0.4, 0xdfeeff, 0.45).setStrokeStyle(4, 0xffffff, 0.9).setDepth(DARK_DEPTH + 1);
+          this.tweens.add({ targets: wave, scale: 2.5, alpha: 0, duration: 450, onComplete: () => wave.destroy() });
+        }
+        const d = Math.hypot(this.me.x - fx.x, this.me.y - fx.y);
+        if (d < 900) this.cameras.main.shake(300, d < fx.r * 1.5 ? 0.02 : 0.007);
+        break;
+      }
+      case 'stun':
+        if (fx.id === this.myId) {
+          this.stunUntil = this.time.now + fx.ms;
+          this.target = null;
+        }
+        break;
+      case 'boomhit': {
+        const spark = this.add.circle(fx.x, fx.y, 8, 0xffc040, 0.9).setDepth(fx.y + 40);
+        this.tweens.add({ targets: spark, scale: 2.5, alpha: 0, duration: 250, onComplete: () => spark.destroy() });
         break;
       }
       case 'hurt': {
@@ -528,11 +628,25 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case 'die': {
-        const puff = this.add.circle(fx.x, fx.y - 10, 14, 0xdddddd, 0.7).setDepth(fx.y + 1);
-        this.tweens.add({ targets: puff, scale: 2.5, alpha: 0, duration: 400, onComplete: () => puff.destroy() });
+        const puff = this.add.circle(fx.x, fx.y - (fx.big ? 60 : 10), fx.big ? 50 : 14, 0xdddddd, 0.7).setDepth(fx.y + 1);
+        this.tweens.add({ targets: puff, scale: 2.5, alpha: 0, duration: fx.big ? 800 : 400, onComplete: () => puff.destroy() });
         break;
       }
     }
+  }
+
+  // Phát vụ nổ tại (x, y). Giữ nguyên tỉ lệ giữa các khung (vụ nổ tự to dần rồi tan), nằm trên lớp bóng tối.
+  explode(x, y, r) {
+    const img = this.add.image(x, y, EXPLOSION[0]).setDepth(DARK_DEPTH + 1).setScale((r * 2) / EXPLOSION_MAX_W);
+    let i = 0;
+    this.time.addEvent({
+      delay: EXPLOSION_FRAME_MS,
+      repeat: EXPLOSION.length - 1,
+      callback: () => {
+        if (++i < EXPLOSION.length) img.setTexture(EXPLOSION[i]);
+        else img.destroy();
+      },
+    });
   }
 
   // ---------- Điều khiển ----------
@@ -569,7 +683,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   hoverLabel(h) {
-    if (h.kind === 'mob') return `Tấn công ${MOB_NAMES[h.o.type] ?? ''}`;
+    if (h.kind === 'mob') return `${this.gear.hand?.id === 'boomerang' ? 'Ném boomerang vào' : 'Tấn công'} ${MOB_NAMES[h.o.type] ?? ''}`;
     if (h.kind === 'player') return this.roster.get(h.o.id)?.name ?? '';
     const e = h.o.e;
     if (STRUCTURES.has(e.type) && this.hasTool('hammer')) return `Đập bỏ ${NAMES[e.type]}`;
@@ -682,12 +796,14 @@ export class GameScene extends Phaser.Scene {
   followTarget(time) {
     const t = this.target;
     let tx, ty, range;
+    // Cầm boomerang (hoặc boomerang đang bay): đứng xa mà ném, chờ nó bay về rồi ném tiếp.
+    const ranged = t.kind === 'mob' && (this.gear.hand?.id === 'boomerang' || this.myBoomFlying);
     if (t.kind === 'point') {
       tx = t.x; ty = t.y; range = 6;
     } else if (t.kind === 'mob') {
       const m = this.mobs.get(t.id);
       if (!m) { this.target = null; return [0, 0]; }
-      tx = m.x; ty = m.y; range = 46;
+      tx = m.x; ty = m.y; range = ranged ? BOOMERANG.range - 40 : 46;
     } else {
       const o = this.ents.get(t.id);
       if (!o) { this.target = null; return [0, 0]; }
@@ -697,6 +813,14 @@ export class GameScene extends Phaser.Scene {
     if (d > range) return [dx / d, dy / d];
     if (t.kind === 'point' || this.me.dead) {
       this.target = null;
+      return [0, 0];
+    }
+    if (ranged) {
+      if (!this.myBoomFlying && time >= this.nextAct) {
+        this.flushPos();
+        this.socket.emit('throw', { id: t.id });
+        this.nextAct = time + 420;
+      }
       return [0, 0];
     }
     if (time >= this.nextAct) {
@@ -723,8 +847,9 @@ export class GameScene extends Phaser.Scene {
     const typing = this.hud.busy;
 
     const pad = this.hud.controls;
+    const stunned = time < this.stunUntil;
     let dx = 0, dy = 0;
-    if (!typing) {
+    if (!typing && !stunned) {
       if (k.A.isDown || k.LEFT.isDown) dx -= 1;
       if (k.D.isDown || k.RIGHT.isDown) dx += 1;
       if (k.W.isDown || k.UP.isDown) dy -= 1;
@@ -734,7 +859,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (dx || dy) {
       this.target = null;
-    } else {
+    } else if (!stunned) {
       if (!typing && !this.target && !this.me.dead && time >= this.nextAuto) {
         if (k.SPACE.isDown || pad.gather) this.target = this.nearest(350, false, time);
         else if (k.F.isDown || pad.attack) this.target = this.nearest(350, true, time);
@@ -752,6 +877,8 @@ export class GameScene extends Phaser.Scene {
       me.dir = dirFromVector(dx, dy);
     }
     me.moving = len > 0;
+    // Hồn ma bay không có tiếng bước chân.
+    this.hud.sound.loop('run', me.moving && !me.dead && !me.asleep);
 
     this.posTimer += delta;
     if (this.posTimer >= 50) {
@@ -780,7 +907,15 @@ export class GameScene extends Phaser.Scene {
       const moving = Math.hypot(m.tx - m.x, m.ty - m.y) > 1;
       m.c.setPosition(m.x, m.y).setDepth(m.y);
       m.body.setFlipX(m.face < 0);
-      m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1;
+      if (m.type === 'deerclops') this.animBoss(m, moving, time);
+      else m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1;
+    }
+
+    for (const b of this.booms.values()) {
+      b.x += (b.tx - b.x) * lerp;
+      b.y += (b.ty - b.y) * lerp;
+      b.img.setPosition(b.x, b.y).setDepth(b.y + 30);
+      b.img.angle += dt * 1100;
     }
 
     // Đóng rương khi đi xa; cập nhật danh sách trạm chế tạo đang ở gần.
@@ -823,6 +958,18 @@ export class GameScene extends Phaser.Scene {
       this.clockTimer = 0;
       this.hud.setClock(this.worldT);
     }
+  }
+
+  // Deerclops: gồng (atk_0) -> vồ (atk_1) -> đi / đứng. Mọi khung dùng chung tỉ lệ để hình không co giãn.
+  animBoss(m, moving, time) {
+    if (!art.has('deerclops')) return;
+    let key = 'deerclops';
+    if (time < m.windupUntil) key = 'deerclops_atk_0';
+    else if (time < m.slamUntil) key = 'deerclops_atk_1';
+    else if (moving) key = `deerclops_walk_${BOSS_WALK[Math.floor(time / 170) % BOSS_WALK.length]}`;
+    if (!art.has(key)) key = 'deerclops';
+    if (m.body.texture.key !== key) m.body.setTexture(key);
+    m.body.setScale(ART_HEIGHT.deerclops / art.get('deerclops')[1]);
   }
 
   // Nút ✋ / ⚔️ trên điện thoại hiện việc sẽ làm với vật / quái gần nhất.
@@ -914,7 +1061,14 @@ export class GameScene extends Phaser.Scene {
       pl.armor.y = -22 - bob;
       pl.hat.setText(pl.headGear ? ITEMS[pl.headGear]?.icon ?? '' : '');
       pl.hat.y = top + 6 - bob;
+      const stunned = pl.stunned || (pl === this.me && time < this.stunUntil);
+      pl.stars.setVisible(stunned);
+      if (stunned) {
+        pl.stars.setPosition(Math.sin(time * 0.012) * 8, top - 10);
+        pl.stars.angle = Math.sin(time * 0.02) * 20;
+      }
     }
+    if (pl.dead) pl.stars.setVisible(false);
     const h = pl.sprite ? ART_HEIGHT.player : 58;
     pl.label.setPosition(pl.x, pl.y - h - 8).setScale(1 / this.zoom);
     pl.bubble.setPosition(pl.x, pl.y - h - 8 - 20 / this.zoom).setScale(1 / this.zoom);

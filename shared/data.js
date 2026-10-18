@@ -25,6 +25,9 @@ export const ACT_RANGE = 80;
 export const TENT_USES = 6;
 
 export const TORCH_RADIUS = 220;
+
+// Boomerang: ném vào quái ở xa, bay tới rồi tự quay về tay. Trúng quái thường thì làm choáng một chút.
+export const BOOMERANG = { range: 380, speed: 650, hitR: 36, catchR: 40, stunMs: 700 };
 export const fireRadius = (fuel) => (fuel <= 0 ? 0 : 110 + Math.min(fuel, 180));
 
 // Các loại lửa đặt được. Hố lửa đá không biến mất khi hết củi.
@@ -51,6 +54,7 @@ export const ITEMS = {
   flint: { name: 'Đá lửa', icon: '🔷', stack: 40, from: 'Nhặt trên mặt đất (nhiều ở vùng đất đá), hoặc đập tảng đá' },
   gold: { name: 'Vàng', icon: '🪙', stack: 40, from: 'Đập tảng đá bằng cuốc chim (35% mỗi tảng)' },
   silk: { name: 'Tơ nhện', icon: '🕸️', stack: 40, from: 'Rơi ra khi giết nhện (50%)' },
+  deerclops_eyeball: { name: 'Mắt Deerclops', icon: '👁️', stack: 10, from: 'Rơi ra khi hạ boss Deerclops (2 cái)' },
   charcoal: { name: 'Than', icon: '⚫', stack: 40, fuel: 50, from: 'Chuột phải vào Gỗ khi đứng gần lửa đang cháy' },
 
   // Cây đào lên bằng xẻng, đem trồng lại chỗ khác. "plant": loại cây sẽ mọc ra.
@@ -93,8 +97,11 @@ export const ITEMS = {
   shovel: { name: 'Xẻng', icon: '🪏', stack: 1, slot: 'hand', tool: 'dig', damage: 17, uses: 25 },
   hammer: { name: 'Búa', icon: '🔨', stack: 1, slot: 'hand', tool: 'hammer', damage: 17, uses: 75 },
   spear: { name: 'Giáo', icon: '🔱', stack: 1, slot: 'hand', damage: 34, uses: 150 },
+  boomerang: { name: 'Boomerang', icon: '🪃', stack: 1, slot: 'hand', damage: 25, uses: 30, thrown: true },
+  icespear: { name: 'Giáo Băng', icon: '🔱', stack: 1, slot: 'hand', damage: 59, uses: 250 },
   torch: { name: 'Đuốc', icon: '🔥', stack: 1, slot: 'hand', damage: 17, uses: 75, burns: true },
   logsuit: { name: 'Giáp gỗ', icon: '🛡️', stack: 1, slot: 'body', armor: 0.8, uses: 315 },
+  furarmor: { name: 'Giáp Lông Deerclops', icon: '🧥', stack: 1, slot: 'body', armor: 0.9, uses: 750 },
   helmet: { name: 'Mũ giáp', icon: '⛑️', stack: 1, slot: 'head', armor: 0.75, uses: 250 },
   backpack: { name: 'Ba lô', icon: '🎒', stack: 1, slot: 'body', pack: true },
   garland: { name: 'Vòng hoa', icon: '💐', stack: 1, slot: 'head', sanityRegen: 0.07, uses: 360, burns: true },
@@ -139,6 +146,9 @@ export const RECIPES = [
   { id: 'crockpot', cat: 'science', name: 'Nồi nấu', icon: '🫕', place: true, station: 'science', needs: { cutstone: 3, boards: 2, twigs: 6 }, desc: 'Đứng gần nồi để nấu các món hầm bổ dưỡng.' },
 
   { id: 'spear', cat: 'gear', needs: { twigs: 2, cutgrass: 2, flint: 1 }, desc: 'Vũ khí cơ bản.' },
+  { id: 'boomerang', cat: 'gear', station: 'science', needs: { twigs: 3, flint: 2, gold: 1, rope: 1 }, desc: 'Vũ khí tầm xa: bấm vào quái để ném, tự bay về tay. Làm choáng quái thường. Boss Deerclops chỉ chịu nửa sát thương cận chiến, nên cần món này.' },
+  { id: 'icespear', cat: 'gear', station: 'science', needs: { deerclops_eyeball: 1, gold: 3, rope: 2, flint: 4 }, desc: 'Giáo làm từ mắt Deerclops: sát thương 59, rất bền.' },
+  { id: 'furarmor', cat: 'gear', station: 'science', needs: { deerclops_eyeball: 1, rope: 4, log: 8, silk: 4 }, desc: 'Giáp lông Deerclops, chặn 90% sát thương, bền gấp đôi giáp gỗ.' },
   { id: 'logsuit', cat: 'gear', station: 'science', needs: { rope: 2, log: 8 }, desc: 'Giáp mặc người, chặn 80% sát thương.' },
   { id: 'helmet', cat: 'gear', station: 'science', needs: { rope: 1, silk: 2, log: 2 }, desc: 'Mũ đội đầu, chặn 75% sát thương.' },
   { id: 'garland', cat: 'gear', needs: { petals: 12 }, desc: 'Đội lên đầu để hồi tinh thần từ từ. Héo sau 6 phút.' },

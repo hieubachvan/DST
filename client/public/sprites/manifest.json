@@ -319,6 +319,10 @@
   38,
   41
  ],
+ "boomerang": [
+  140,
+  151
+ ],
  "player_idle_down": [
   54,
   107
@@ -622,5 +626,57 @@
  "campfire_anim_7": [
   33,
   35
+ ],
+ "deerclops": [
+  165,
+  229
+ ],
+ "deerclops_walk_0": [
+  155,
+  221
+ ],
+ "deerclops_walk_1": [
+  162,
+  220
+ ],
+ "deerclops_walk_2": [
+  159,
+  215
+ ],
+ "deerclops_atk_0": [
+  181,
+  200
+ ],
+ "deerclops_atk_1": [
+  228,
+  187
+ ],
+ "explosion_1": [
+  45,
+  45
+ ],
+ "explosion_2": [
+  119,
+  113
+ ],
+ "explosion_3": [
+  196,
+  191
+ ],
+ "explosion_4": [
+  354,
+  342
+ ],
+ "explosion_5": [
+  345,
+  333
+ ],
+ "explosion_6": [
+  193,
+  208
+ ],
+ "explosion_7": [
+  126,
+  136
  ]
 }

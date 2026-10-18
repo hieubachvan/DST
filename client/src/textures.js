@@ -328,6 +328,33 @@ export function makeTextures(scene) {
     g.fillCircle(62, 24, 2);
   });
 
+  gen('deerclops', 120, 170, (g) => {
+    g.fillStyle(0x1a1a1a);
+    g.fillRect(38, 130, 12, 38);
+    g.fillRect(70, 130, 12, 38);
+    g.fillStyle(0x8a9298);
+    g.fillEllipse(60, 95, 96, 92);
+    g.lineStyle(5, 0xb8a77a);
+    g.lineBetween(42, 52, 22, 8);
+    g.lineBetween(30, 30, 12, 26);
+    g.lineBetween(78, 52, 98, 8);
+    g.lineBetween(90, 30, 108, 26);
+    g.fillStyle(0xffffff);
+    g.fillCircle(66, 78, 14);
+    g.fillStyle(0x111111);
+    g.fillCircle(68, 78, 6);
+    g.fillRect(52, 104, 22, 12);
+  });
+
+  gen('boomerang', 40, 40, (g) => {
+    g.lineStyle(9, 0x8a4a22);
+    g.lineBetween(6, 30, 20, 8);
+    g.lineBetween(20, 8, 36, 28);
+    g.lineStyle(3, 0xd9a634);
+    g.lineBetween(11, 22, 15, 25);
+    g.lineBetween(28, 17, 25, 20);
+  });
+
   gen('tent', 80, 84, (g) => {
     g.fillStyle(0xb39257);
     g.fillTriangle(40, 4, 4, 80, 76, 80);

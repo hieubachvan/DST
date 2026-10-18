@@ -553,6 +553,30 @@ img.mini { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px;
 #warn.big { font-size: 22px; padding: 12px 26px; }
 @keyframes warn-pulse { to { box-shadow: 0 0 22px rgba(255, 80, 50, 0.8); } }
 #roster small { opacity: 0.65; }
+#bossbar {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(20, 14, 10, 0.85);
+  border: 2px solid #8fb8d8;
+  overflow: hidden;
+  pointer-events: none;
+}
+#bossfill { height: 100%; background: linear-gradient(#d84a3a, #8a1f16); transition: width 0.2s; }
+#bosstext {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 1px 2px #000;
+}
 
 /* ----- Sảnh: chọn server, quản trị ----- */
 .login-panel, .admin-panel { position: relative; }

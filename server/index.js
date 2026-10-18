@@ -99,6 +99,7 @@ io.on('connection', (socket) => {
   onPlayer('ready', (p) => game.onReady(p));
   onPlayer('pos', (p, d) => game.onPos(p, d));
   onPlayer('act', (p, d) => game.onAct(p, d));
+  onPlayer('throw', (p, d) => game.onThrow(p, d));
   onPlayer('use', (p, d) => game.onUse(p, d));
   onPlayer('alt', (p, d) => game.onAlt(p, d));
   onPlayer('unequip', (p, d) => game.onUnequip(p, d));

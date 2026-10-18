@@ -605,6 +605,16 @@ export class Hud {
     $('disc').hidden = false;
   }
 
+  // Thanh máu boss: [id, máu, máu tối đa], hoặc undefined khi không có boss ở gần.
+  setBoss(bo) {
+    const el = $('bossbar');
+    el.hidden = !bo;
+    if (!bo) return;
+    const [, hp, max] = bo;
+    $('bossfill').style.width = `${(hp / max) * 100}%`;
+    $('bosstext').textContent = `Deerclops — ${hp} / ${max}`;
+  }
+
   // Banner cảnh báo giữa màn hình (chó săn sắp tới...)
   warn({ text, big }) {
     const el = $('warn');
