@@ -651,6 +651,66 @@
   228,
   187
  ],
+ "player_suit_idle_down": [
+  66,
+  105
+ ],
+ "player_suit_walk_down": [
+  66,
+  105
+ ],
+ "player_suit_run_down": [
+  66,
+  107
+ ],
+ "player_suit_idle_down_right": [
+  60,
+  106
+ ],
+ "player_suit_walk_down_right": [
+  60,
+  107
+ ],
+ "player_suit_run_down_right": [
+  60,
+  102
+ ],
+ "player_suit_idle_right": [
+  58,
+  105
+ ],
+ "player_suit_walk_right": [
+  58,
+  105
+ ],
+ "player_suit_run_right": [
+  58,
+  104
+ ],
+ "player_suit_idle_up_right": [
+  58,
+  102
+ ],
+ "player_suit_walk_up_right": [
+  58,
+  102
+ ],
+ "player_suit_run_up_right": [
+  58,
+  100
+ ],
+ "player_suit_idle_up": [
+  64,
+  103
+ ],
+ "player_suit_walk_up": [
+  64,
+  102
+ ],
+ "player_suit_run_up": [
+  64,
+  102
+ ],
  "explosion_1": [
   45,
   45
@@ -678,5 +738,9 @@
  "explosion_7": [
   126,
   136
+ ],
+ "logsuit": [
+  64,
+  64
  ]
 }
