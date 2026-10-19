@@ -6,6 +6,7 @@
   "description": "Game sinh tồn 2D nhiều người chơi trên web, lấy cảm hứng từ Don't Starve Together",
   "scripts": {
     "dev": "concurrently -k -n server,client -c yellow,cyan \"node --disable-warning=ExperimentalWarning --watch server/index.js\" \"vite\"",
+    "dev:test": "node tools/dev.mjs",
     "build": "vite build",
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "sprites": "node tools/extract-sprites.mjs"

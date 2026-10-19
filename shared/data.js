@@ -56,6 +56,7 @@ export const ITEMS = {
   gold: { name: 'Vàng', icon: '🪙', stack: 40, from: 'Đập tảng đá bằng cuốc chim (35% mỗi tảng)' },
   silk: { name: 'Tơ nhện', icon: '🕸️', stack: 40, from: 'Rơi ra khi giết nhện (50%)' },
   deerclops_eyeball: { name: 'Mắt Deerclops', icon: '👁️', stack: 10, from: 'Rơi ra khi hạ boss Deerclops (2 cái)' },
+  bearger_fur: { name: 'Lông Gấu', icon: '🐻', stack: 10, from: 'Rơi ra khi hạ boss Bearger' },
   charcoal: { name: 'Than', icon: '⚫', stack: 40, fuel: 50, from: 'Chuột phải vào Gỗ khi đứng gần lửa đang cháy' },
 
   // Cây đào lên bằng xẻng, đem trồng lại chỗ khác. "plant": loại cây sẽ mọc ra.
@@ -140,6 +141,7 @@ export const RECIPES = [
   { id: 'tent', cat: 'survival', name: 'Lều', icon: '⛺', place: true, station: 'science', needs: { silk: 4, twigs: 4, rope: 3 }, desc: `Bấm vào lều lúc chạng vạng hoặc ban đêm để ngủ: an toàn trong bóng tối, hồi máu và tinh thần nhưng đói nhanh hơn. Ngủ được ${TENT_USES} lần.` },
   { id: 'dryingrack', cat: 'survival', name: 'Giàn phơi', icon: '🪝', place: true, station: 'science', needs: { rope: 3, twigs: 2, charcoal: 2 }, desc: 'Đứng gần giàn, chuột phải vào thịt sống để phơi thành thịt khô (hồi máu và tinh thần).' },
   { id: 'chest', cat: 'survival', name: 'Rương', icon: '🧰', place: true, station: 'science', needs: { boards: 3 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ. Ai cũng mở được, tiện chia đồ với bạn bè.` },
+  { id: 'icebox', cat: 'survival', name: 'Hộp Đá Lạnh', icon: '🧊', place: true, station: 'science', needs: { bearger_fur: 1, gold: 2, cutstone: 2 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ, đồ ăn bên trong hư chậm gấp đôi. Làm từ Lông Gấu của boss Bearger.` },
 
   { id: 'rope', cat: 'refine', station: 'science', needs: { cutgrass: 3 }, desc: 'Nguyên liệu cho búa, giáp, mũ.' },
   { id: 'boards', cat: 'refine', station: 'science', needs: { log: 4 }, desc: 'Nguyên liệu cho rương, nồi nấu. Cũng là củi tốt.' },

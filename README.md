@@ -33,10 +33,11 @@ npm start        # http://localhost:3000
 
 Thử nhanh ban đêm: `START_TIME=170 npm start` (PowerShell: `$env:START_TIME=170; npm start`).
 
-Chế độ thử nghiệm: chạy server với `DEV=1` (PowerShell: `$env:DEV=1; npm run dev`), sau đó gõ vào ô chat:
+Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=1`, dùng được trên mọi hệ điều hành), sau đó gõ vào ô chat:
 - `/give <mã đồ> <số lượng>`, ví dụ `/give gold 5` hoặc `/give log 40`. Mã đồ xem trong `shared/data.js`.
-- `/hounds`: gọi đàn chó săn tới sau khoảng 12 giây.
+- `/hounds`: gọi đàn chó săn tới sau khoảng 12 giây (gọi được cả khi Deerclops đang ở đây).
 - `/boss`: gọi boss Deerclops tới sau khoảng 12 giây (thử nhanh: `/give boomerang 1`).
+- `/boss bearger`: gọi boss Bearger tới sau khoảng 12 giây. Bearger mê đồ ăn: thả vài quả mọng (`/give berries 20`) để dụ nó.
 
  **Không bật `DEV=1` khi deploy thật.**
 

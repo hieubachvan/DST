@@ -256,6 +256,43 @@ export function makeTextures(scene) {
     g.fillRect(24, 15, 6, 8);
   });
 
+  // Hộp Đá Lạnh: hộp đá xám lạnh, nắp đóng băng, viền lông gấu
+  gen('icebox', 54, 46, (g) => {
+    g.fillStyle(0x7f8a92);
+    g.fillRect(5, 16, 44, 28);
+    g.fillStyle(0xbfe6f5);
+    g.fillRoundedRect(3, 6, 48, 13, 5);
+    g.fillStyle(0xffffff);
+    g.fillRect(9, 8, 14, 3);
+    g.fillStyle(0x6b5038);
+    g.fillRect(5, 19, 44, 4);
+    g.fillStyle(0x5a646b);
+    g.fillRect(12, 26, 4, 16);
+    g.fillRect(38, 26, 4, 16);
+    g.fillStyle(0x8fd3ee);
+    g.fillRect(24, 24, 6, 6);
+  });
+
+  // Bearger (dự phòng khi chưa có sprite): thân lông to, mặt sọc như con lửng
+  gen('bearger', 110, 120, (g) => {
+    g.fillStyle(0x2b211a);
+    g.fillRect(30, 92, 16, 26);
+    g.fillRect(64, 92, 16, 26);
+    g.fillStyle(0xb8ad94);
+    g.fillEllipse(55, 66, 100, 84);
+    g.fillStyle(0xd8d2c2);
+    g.fillEllipse(55, 36, 48, 40);
+    g.fillStyle(0x1a1a1a);
+    g.fillTriangle(55, 18, 46, 44, 64, 44);
+    g.fillCircle(42, 36, 7);
+    g.fillCircle(68, 36, 7);
+    g.fillStyle(0xffffff);
+    g.fillCircle(42, 36, 2);
+    g.fillCircle(68, 36, 2);
+    g.fillStyle(0xc96a6a);
+    g.fillCircle(55, 50, 5);
+  });
+
   const trap = (caught) => (g) => {
     g.fillStyle(0xb89a5a);
     g.fillTriangle(4, 30, 36, 30, 20, 4);
