@@ -16,11 +16,18 @@ const recipeName = (r) => r.name ?? ITEMS[r.id].name;
 const recipeIcon = (r) => iconHtml(r.id, r.icon ?? ITEMS[r.id]?.icon);
 const mini = (id) => iconHtml(id).replace('class="ic', 'class="mini');
 
+// Độ tươi còn lại (1 = mới, 0 = sắp hỏng; với đồ ôi thiu là sắp biến mất).
+const freshness = (it) => Math.max(0, 1 - (it.age ?? 0) / ITEMS[it.id].perish);
+
 function itemHtml(it) {
   const def = ITEMS[it.id];
   let html = iconHtml(it.id);
   if (it.count > 1) html += `<span class="cnt">${it.count}</span>`;
   if (def.uses) html += `<span class="dur"><i style="width:${Math.max(0, (it.dur / def.uses) * 100)}%"></i></span>`;
+  if (def.perish) {
+    const f = freshness(it);
+    html += `<span class="dur"><i class="${f < 0.25 ? 'bad' : f < 0.5 ? 'warn' : ''}" style="width:${Math.round(f * 100)}%"></i></span>`;
+  }
   return html;
 }
 
@@ -32,6 +39,7 @@ function itemInfo(it) {
   if (def.armor) lines.push(`Chặn ${Math.round(def.armor * 100)}% sát thương`);
   if (def.damage) lines.push(`Sát thương ${def.damage}`);
   if (def.uses) lines.push(`Độ bền ${Math.max(0, Math.round((it.dur / def.uses) * 100))}%`);
+  if (def.perish) lines.push(it.id === 'rotten' ? `Sắp biến mất (${Math.round(freshness(it) * 100)}%)` : `Độ tươi ${Math.round(freshness(it) * 100)}%`);
   if (def.pack) lines.push(`Thêm ${PACK_SIZE} ô đồ${it.slots?.some(Boolean) ? ' · đang chứa đồ' : ''}`);
   if (def.fuel) lines.push(`Củi: +${def.fuel} giây`);
   return lines;

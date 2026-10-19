@@ -215,6 +215,8 @@ img { -webkit-user-drag: none; }
 .slot .key { position: absolute; left: 3px; top: 1px; font-size: 9px; opacity: 0.5; }
 .slot .dur { position: absolute; left: 4px; right: 4px; bottom: 3px; height: 4px; background: rgba(0, 0, 0, 0.6); border-radius: 2px; }
 .slot .dur i { display: block; height: 100%; background: var(--ok); border-radius: 2px; }
+.slot .dur i.warn { background: #d8a24a; }
+.slot .dur i.bad { background: #c0504a; }
 .slot.equip { width: 48px; height: 48px; border-color: var(--accent); background: rgba(216, 162, 74, 0.15); }
 .slot.equip:empty::after { content: attr(data-empty); opacity: 0.35; font-size: 22px; }
 
