@@ -998,6 +998,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       const bob = pl.moving ? Math.abs(Math.sin(time * 0.015)) * 3 : 0;
       let top; // đỉnh đầu, để đặt mũ
+      let suited = false;
       if (pl.sprite) {
         // Hoạt ảnh: chạy khi di chuyển, đứng yên quay mặt ra trước, khựng lại khi bị đánh
         const [base, flip] = DIR_FRAMES[pl.dir ?? 'down'];
@@ -1005,6 +1006,9 @@ export class GameScene extends Phaser.Scene {
           // Bộ khung 8 hướng: bước chân luân phiên khi di chuyển, giữ hướng cuối khi đứng yên
           const pose = pl.moving ? STEP_CYCLE[Math.floor(time / STEP_MS) % STEP_CYCLE.length] : 'idle';
           let frame = `player_${pose}_${base}`;
+          // Mặc giáp gỗ: bộ hình nhân vật mặc giáp, cùng tư thế và nhịp bước; không vẽ emoji lên người nữa
+          suited = pl.bodyGear === 'logsuit' && art.has(`player_suit_${pose}_${base}`);
+          if (suited) frame = `player_suit_${pose}_${base}`;
           if (!art.has(frame)) frame = `player_idle_${base}`;
           if (pl.sprite.texture.key !== frame) pl.sprite.setTexture(frame);
           pl.sprite.setScale(ART_HEIGHT.player / PLAYER_FRAME_H);
@@ -1057,7 +1061,7 @@ export class GameScene extends Phaser.Scene {
           pl.c.moveAbove(pl.item, pl.sprite);
         }
       }
-      pl.armor.setText(pl.bodyGear ? ITEMS[pl.bodyGear]?.icon ?? '' : '');
+      pl.armor.setText(pl.bodyGear && !suited ? ITEMS[pl.bodyGear]?.icon ?? '' : '');
       pl.armor.y = -22 - bob;
       pl.hat.setText(pl.headGear ? ITEMS[pl.headGear]?.icon ?? '' : '');
       pl.hat.y = top + 6 - bob;

@@ -1,6 +1,6 @@
 import {
   CHUNK, SPAWN, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
-  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DAY_LEN, BOOMERANG, biomeAt, phaseAt, fireRadius,
+  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DAY_LEN, DROP_LIFE, BOOMERANG, biomeAt, phaseAt, fireRadius,
 } from '../shared/data.js';
 
 const SAVE_EVERY_MS = 30000;
@@ -90,10 +90,37 @@ const ENTS_PER_CHUNK = 115;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const pub = ({ regrowAt, ...rest }) => rest;
+const pub = ({ regrowAt, life, ...rest }) => rest;
 const emptyGear = () => ({ hand: null, head: null, body: null });
 // Dữ liệu riêng của món đồ cần giữ khi chuyển chỗ (đồ trong ba lô).
-const packed = (it) => (it.slots ? { slots: it.slots } : undefined);
+// Phần "đi kèm" của một món khi chuyển chỗ: đồ trong ba lô, và độ cũ của đồ tươi.
+const packed = (it) => (it.slots || it.age ? { ...(it.slots && { slots: it.slots }), ...(it.age && { age: it.age }) } : undefined);
+
+// Đồ tươi cũ dần theo giây. Hết hạn thì thành Đồ ôi thiu; đồ ôi thiu hết hạn thì biến mất.
+// Trả về 'rot' (vừa đổi thành đồ ôi), 'gone' (biến mất) hoặc null.
+function ageItem(it, dt) {
+  const def = ITEMS[it.id];
+  if (!def.perish) return null;
+  it.age = (it.age ?? 0) + dt;
+  if (it.age < def.perish) return null;
+  if (it.id === 'rotten') return 'gone';
+  it.id = 'rotten';
+  it.age = 0;
+  return 'rot';
+}
+
+// Cho cả một dãy ô (túi, rương) cũ thêm dt giây. Trả về true nếu có món đổi hoặc mất.
+function ageSlots(slots, dt) {
+  let changed = false;
+  for (let i = 0; i < slots.length; i++) {
+    const it = slots[i];
+    if (!it) continue;
+    const r = ageItem(it, dt);
+    if (r === 'gone') slots[i] = null;
+    if (r) changed = true;
+  }
+  return changed;
+}
 
 function pickWeighted(table) {
   let r = Math.random() * table.reduce((s, [, w]) => s + w, 0);
@@ -110,6 +137,7 @@ function addToSlots(slots, id, count, dur, extra) {
       if (left <= 0) break;
       if (s && s.id === id && s.count < def.stack) {
         const n = Math.min(left, def.stack - s.count);
+        s.age = ((s.age ?? 0) * s.count + (extra?.age ?? 0) * n) / (s.count + n); // trộn độ cũ theo số lượng
         s.count += n;
         left -= n;
       }
@@ -311,7 +339,7 @@ export class Game {
   // Đồ tạm (đuốc tặng lúc hồi sinh) không bao giờ nằm lại trên đất: chết hay vứt đi là mất luôn.
   spawnDrop(x, y, item) {
     if (item.temp) return;
-    this.addEnt('drop', x, y, { item: { ...item } });
+    this.addEnt('drop', x, y, { item: { ...item }, life: 0 });
   }
 
   spawnMob(type, x, y, extra = {}) {
@@ -1435,6 +1463,25 @@ export class Game {
     this.wander(m, def, dt, now, goal);
   }
 
+  // Mỗi giây: đồ vứt ngoài đất tự biến mất sau DROP_LIFE; thức ăn tươi (trong túi, rương, ngoài đất) cũ dần.
+  updateDecay() {
+    const sync = this.slowCount % 5 === 0; // gửi lại túi/rương định kỳ để thanh độ tươi chạy
+    for (const e of [...this.ents.values()]) {
+      if (e.type === 'drop') {
+        e.life = (e.life ?? 0) + 1;
+        if (e.life >= DROP_LIFE) { this.removeEnt(e); continue; }
+        const r = ageItem(e.item, 1);
+        if (r === 'gone') this.removeEnt(e);
+        else if (r === 'rot') this.updEnt(e);
+      } else if (e.type === 'chest' && e.slots) {
+        if (ageSlots(e.slots, 1) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
+      }
+    }
+    for (const p of this.players.values()) {
+      if (ageSlots(p.inv, 1) || (sync && p.inv.some((it) => it && ITEMS[it.id].perish))) this.sendInv(p);
+    }
+  }
+
   slowTick() {
     if (PAUSE_WHEN_EMPTY && this.players.size === 0) return;
     const phase = phaseAt(this.t);
@@ -1450,6 +1497,7 @@ export class Game {
         this.updEnt(e);
       }
     }
+    this.updateDecay();
 
     // Mọc lại tại chỗ cũ; nếu chỗ đó đang bị công trình chiếm thì thử lại sau.
     this.respawnQueue = this.respawnQueue.filter((q) => {

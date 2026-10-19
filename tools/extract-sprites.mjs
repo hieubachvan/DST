@@ -28,6 +28,7 @@ const SHEETS = {
   anim: { file: 'player-animations.png', mode: 'alpha' },
   deer: { file: 'deerclops.png', mode: 'bg' },
   boom: { file: 'boomerang.png', mode: 'bg' },
+  suit: { file: 'player-with-suit.png', mode: 'alpha' },
 };
 
 // Tấm deerclops.png: lưới 4 cột x 6 hàng (mỗi ô ~256px). Hàng 2 = đi, hàng 5 = vồ.
@@ -63,6 +64,23 @@ const ANIM_SPRITES = {
   ...frames('pig_dir', [[104, 577, 49, 55], [174, 577, 50, 48], [239, 577, 48, 48], [303, 578, 48, 49], [373, 583, 50, 42], [442, 578, 54, 46], [513, 585, 53, 42]]),
   ...frames('crow_dir', [[104, 709, 42, 45], [173, 710, 41, 41], [241, 711, 44, 43], [309, 710, 42, 43], [383, 710, 39, 42], [453, 710, 39, 43], [522, 712, 36, 42]]),
   ...frames('campfire_anim', [[689, 624, 37, 45], [751, 624, 33, 45], [810, 624, 32, 45], [864, 624, 32, 45], [924, 624, 34, 45], [980, 624, 40, 45], [1041, 624, 39, 45], [1105, 624, 35, 45]]),
+};
+
+// Tấm player-with-suit.png: nhân vật mặc giáp gỗ (nền ca-rô vẽ sẵn nên dùng mode "alpha").
+// Tấm này không có bước chân dùng được (hàng 2 "đi" gần như đứng chân, hàng 3 "chạy" thiếu hướng trước/sau, hàng 1
+// vẽ khác kiểu), nên chỉ lấy THÂN mặc giáp: mỗi hướng một khung chân khép ở hàng 2. Chân của từng tư thế
+// (đứng/đi/chạy) lấy từ khung nhân vật thường cùng hướng rồi ghép vào dưới vạt áo (xem withLegs), nên khi mặc giáp
+// nhân vật bước chân y như lúc không mặc.
+// Thứ tự nhóm ở hàng 2: 0 trước, 1 chéo trước trái, 2 nghiêng trái, 3 lưng, 4 lưng, 5 lưng chéo trái, 6 nghiêng phải, 7 trước.
+// Hướng nào quay trái thì lật ngang (true cuối) cho thành hướng phải; game tự lật lại khi đi sang trái.
+// Hàng 2 cao ~100px và hẹp ngang hơn nhân vật thường, nên nhân [1.48 ngang, 1.05 dọc]: cao ~109px, đầu rộng ~50px.
+const SUIT_K = [1.48, 1.05];
+const SUIT_BODIES = {
+  down: ['suit', 115, 217, 44, 101, SUIT_K, false],
+  down_right: ['suit', 367, 217, 39, 100, SUIT_K, true],
+  right: ['suit', 1159, 214, 37, 99, SUIT_K, false],
+  up_right: ['suit', 1058, 214, 36, 98, SUIT_K, true],
+  up: ['suit', 795, 214, 39, 97, SUIT_K, false],
 };
 
 const SPRITES = {
@@ -160,7 +178,10 @@ const SPRITES = {
 
 // Hình rời đã có nền trong suốt: chép nguyên vẹn, không cắt.
 // Vụ nổ: https://agresko.itch.io/explosion-animation---7x (Marek Sefcik), xem assets/explosion/readme.txt
-const COPIES = Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [`explosion_${i}`, `explosion/explosion_${i}.png`]));
+const COPIES = {
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [`explosion_${i}`, `explosion/explosion_${i}.png`])),
+  logsuit: 'logsuit.png', // icon giáp gỗ
+};
 
 const PAD = 3;
 const BG_STEP = 16; // khác biệt màu tối đa giữa 2 điểm nền liền nhau
@@ -305,6 +326,143 @@ function keepMain({ data: src, width: W, height: H }, bg) {
   return crop;
 }
 
+// Thu phóng bằng cách lấy trung bình vùng nguồn (alpha nhân trước) để viền không bị răng cưa.
+function scaleImage(png, k) {
+  const [kx, ky] = Array.isArray(k) ? k : [k, k];
+  const W = Math.max(1, Math.round(png.width * kx)), H = Math.max(1, Math.round(png.height * ky));
+  const out = new PNG({ width: W, height: H });
+  for (let y = 0; y < H; y++) {
+    const sy0 = (y / H) * png.height, sy1 = ((y + 1) / H) * png.height;
+    for (let x = 0; x < W; x++) {
+      const sx0 = (x / W) * png.width, sx1 = ((x + 1) / W) * png.width;
+      let r = 0, g = 0, b = 0, a = 0, wsum = 0;
+      for (let yy = Math.floor(sy0); yy < Math.min(png.height, Math.ceil(sy1)); yy++) {
+        const wy = Math.min(yy + 1, sy1) - Math.max(yy, sy0);
+        for (let xx = Math.floor(sx0); xx < Math.min(png.width, Math.ceil(sx1)); xx++) {
+          const w = wy * (Math.min(xx + 1, sx1) - Math.max(xx, sx0));
+          const i = (yy * png.width + xx) * 4, al = png.data[i + 3] / 255;
+          r += png.data[i] * al * w; g += png.data[i + 1] * al * w; b += png.data[i + 2] * al * w; a += al * w; wsum += w;
+        }
+      }
+      const o = (y * W + x) * 4;
+      if (a > 0) { out.data[o] = r / a; out.data[o + 1] = g / a; out.data[o + 2] = b / a; }
+      out.data[o + 3] = Math.round((a / wsum) * 255);
+    }
+  }
+  return out;
+}
+
+function flipImage(png) {
+  const out = new PNG({ width: png.width, height: png.height });
+  for (let y = 0; y < png.height; y++)
+    for (let x = 0; x < png.width; x++) png.data.copy(out.data, (y * png.width + x) * 4, (y * png.width + png.width - 1 - x) * 4, (y * png.width + png.width - x) * 4);
+  return out;
+}
+
+// Khung trên tấm suit đứng sát nhau nên mép khung hay dính một mẩu tóc/tay của khung bên cạnh:
+// bỏ các mảnh chạm mép trái/phải mà nhỏ hơn 20% mảnh lớn nhất, rồi cắt sát lại.
+function dropEdgeBits(png) {
+  const { width: W, height: H } = png;
+  const lab = new Int32Array(W * H);
+  const parts = [null];
+  for (let k = 0; k < W * H; k++) {
+    if (lab[k] || png.data[k * 4 + 3] === 0) continue;
+    const id = parts.length, st = [k];
+    let n = 0, edge = false;
+    lab[k] = id;
+    while (st.length) {
+      const j = st.pop(), jx = j % W;
+      n++;
+      if (jx === 0 || jx === W - 1) edge = true;
+      for (const m of [j - 1, j + 1, j - W, j + W]) {
+        if (m < 0 || m >= W * H || lab[m] || png.data[m * 4 + 3] === 0) continue;
+        if ((m === j - 1 && jx === 0) || (m === j + 1 && jx === W - 1)) continue;
+        lab[m] = id;
+        st.push(m);
+      }
+    }
+    parts.push({ n, edge });
+  }
+  const biggest = Math.max(...parts.slice(1).map((p) => p.n));
+  for (let k = 0; k < W * H; k++) {
+    const p = parts[lab[k]];
+    if (p && p.edge && p.n < biggest * 0.2) png.data.fill(0, k * 4, k * 4 + 4);
+  }
+  let x0 = W, x1 = -1;
+  for (let k = 0; k < W * H; k++) if (png.data[k * 4 + 3] > 0) { x0 = Math.min(x0, k % W); x1 = Math.max(x1, k % W); }
+  const cw = x1 - x0 + 1;
+  const out = new PNG({ width: cw, height: H });
+  for (let y = 0; y < H; y++) png.data.copy(out.data, y * cw * 4, (y * W + x0) * 4, (y * W + x1 + 1) * 4);
+  return out;
+}
+
+// ---------- Ghép chân cho nhân vật mặc giáp ----------
+
+const opaque = (png, x, y) => png.data[(y * png.width + x) * 4 + 3] > 128;
+const rowCount = (png, y) => { let n = 0; for (let x = 0; x < png.width; x++) if (opaque(png, x, y)) n++; return n; };
+function meanX(png, y0, y1) {
+  let s = 0, n = 0;
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < png.width; x++) if (opaque(png, x, y)) { s += x; n++; }
+  return n ? s / n : png.width / 2;
+}
+// Vạt áo giáp: đi từ giữa thân xuống, hàng đầu tiên hẹp hẳn lại (chỉ còn hai ống chân) là hết áo.
+function hemOf(png) {
+  let widest = 0;
+  for (let y = Math.floor(png.height * 0.6); y < png.height; y++) {
+    const n = rowCount(png, y);
+    if (n < widest * 0.6) return y - 1;
+    widest = Math.max(widest, n);
+  }
+  return png.height - 1;
+}
+// Gấu áo đỏ của nhân vật thường: hàng thấp nhất còn vài điểm đỏ.
+function shirtOf(png) {
+  for (let y = png.height - 1; y >= 0; y--) {
+    let n = 0;
+    for (let x = 0; x < png.width; x++) {
+      const i = (y * png.width + x) * 4, d = png.data;
+      if (d[i + 3] > 128 && d[i] > 120 && d[i + 1] < 90 && d[i + 2] < 90) n++;
+    }
+    if (n >= 4) return y;
+  }
+  return png.height - 1;
+}
+// Phần chân (dưới gấu áo đỏ), chỉ giữ điểm tối (quần, giày) để bỏ bàn tay buông dưới gấu áo.
+function legsOf(png) {
+  const top = shirtOf(png) + 1, W = png.width, H = png.height - top;
+  const out = new PNG({ width: W, height: H });
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const s = ((top + y) * W + x) * 4, d = png.data;
+    if (d[s + 3] && 0.3 * d[s] + 0.59 * d[s + 1] + 0.11 * d[s + 2] < 110) d.copy(out.data, (y * W + x) * 4, s, s + 4);
+  }
+  return out;
+}
+const LEG_K_MIN = 0.8; // chân giáp ngắn (~15px so với ~21px); không thu chân nhỏ hơn mức này kẻo khó thấy bước
+// Thân mặc giáp (bỏ phần dưới vạt áo) + chân của khung nhân vật thường "pose", thu cỡ theo chân khung đứng yên
+// "idle" để mọi tư thế dùng cùng tỉ lệ. Khung kết quả đối xứng quanh tâm thân để thân không xê dịch giữa các khung.
+function withLegs(body, pose, idle) {
+  const hem = hemOf(body);
+  const k = Math.max(LEG_K_MIN, (body.height - 1 - hem) / (idle.height - 1 - shirtOf(idle)));
+  const legs = scaleImage(legsOf(pose), k);
+  const bodyCx = meanX(body, hem - 3, hem);
+  const legX = Math.round(bodyCx - meanX(legs, 0, 2));
+  const top = hem - 1; // chân chui dưới vạt áo một điểm
+  const half = Math.ceil(Math.max(bodyCx - Math.min(0, legX), Math.max(body.width, legX + legs.width) - bodyCx));
+  const W = half * 2, H = Math.max(hem + 1, top + legs.height), off = Math.round(half - bodyCx);
+  const out = new PNG({ width: W, height: H });
+  out.data.fill(0);
+  const put = (src, sx, sy, dx, dy) => {
+    const s = (sy * src.width + sx) * 4, a = src.data[s + 3] / 255;
+    if (!a) return;
+    const t = (dy * W + dx) * 4, b = out.data[t + 3] / 255, oa = a + b * (1 - a);
+    for (let c = 0; c < 3; c++) out.data[t + c] = (src.data[s + c] * a + out.data[t + c] * b * (1 - a)) / oa;
+    out.data[t + 3] = oa * 255;
+  };
+  for (let y = 0; y < legs.height; y++) for (let x = 0; x < legs.width; x++) put(legs, x, y, x + legX + off, y + top);
+  for (let y = 0; y <= hem; y++) for (let x = 0; x < body.width; x++) put(body, x, y, x + off, y);
+  return out;
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 const sheets = {};
 for (const [key, { file, mode }] of Object.entries(SHEETS)) {
@@ -318,14 +476,34 @@ for (const [key, { file, mode }] of Object.entries(SHEETS)) {
 }
 
 const manifest = {};
-for (const [name, [sheet, x, y, w, h]] of Object.entries(SPRITES)) {
+for (const [name, [sheet, x, y, w, h, scale, flip]] of Object.entries(SPRITES)) {
   if (!sheets[sheet]) continue;
   try {
-    const png = extract(sheets[sheet].png, x, y, w, h, sheets[sheet].mode);
+    let png = extract(sheets[sheet].png, x, y, w, h, sheets[sheet].mode);
+    if (scale) png = scaleImage(png, scale);
+    if (flip) png = flipImage(png);
     fs.writeFileSync(path.join(OUT, `${name}.png`), PNG.sync.write(png));
     manifest[name] = [png.width, png.height];
   } catch (err) {
     console.warn(`Lỗi ${name}: ${err.message}`);
+  }
+}
+// Nhân vật mặc giáp: player_suit_<idle|walk|run>_<hướng>, cùng tên tư thế với nhân vật thường.
+if (sheets.suit) {
+  for (const [dir, [sheet, x, y, w, h, scale, flip]] of Object.entries(SUIT_BODIES)) {
+    try {
+      let body = scaleImage(dropEdgeBits(extract(sheets[sheet].png, x, y, w, h, sheets[sheet].mode)), scale);
+      if (flip) body = flipImage(body);
+      const read = (pose) => PNG.sync.read(fs.readFileSync(path.join(OUT, `player_${pose}_${dir}.png`)));
+      const idle = read('idle');
+      for (const pose of ['idle', 'walk', 'run']) {
+        const png = withLegs(body, read(pose), idle);
+        fs.writeFileSync(path.join(OUT, `player_suit_${pose}_${dir}.png`), PNG.sync.write(png));
+        manifest[`player_suit_${pose}_${dir}`] = [png.width, png.height];
+      }
+    } catch (err) {
+      console.warn(`Lỗi player_suit_*_${dir}: ${err.message}`);
+    }
   }
 }
 for (const [name, file] of Object.entries(COPIES)) {

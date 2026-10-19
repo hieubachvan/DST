@@ -9,6 +9,7 @@ export const chunkKey = (cx, cy) => `${cx},${cy}`;
 
 // Một ngày dài 240 giây: ban ngày 120s, chạng vạng 60s, ban đêm 60s.
 export const DAY_LEN = 240;
+export const DROP_LIFE = 300; // đồ vứt ngoài đất tự biến mất sau ngần này giây
 export const DAY_END = 120;
 export const DUSK_END = 180;
 
@@ -69,16 +70,16 @@ export const ITEMS = {
 
   // Thức ăn
   petals: { name: 'Cánh hoa', icon: '🌸', stack: 40, from: 'Hái hoa ở đồng cỏ (+5 tinh thần)', food: { hunger: 0, health: 1, sanity: 0 } },
-  berries: { name: 'Quả mọng', icon: '🫐', stack: 40, from: 'Hái bụi quả mọng (mọc lại sau 1,5 phút)', food: { hunger: 9, health: 0, sanity: 0 }, cook: 'roastedberries' },
-  roastedberries: { name: 'Quả mọng nướng', icon: '🍇', stack: 40, food: { hunger: 12, health: 1, sanity: 0 } },
-  carrot: { name: 'Cà rốt', icon: '🥕', stack: 40, from: 'Nhổ ở đồng cỏ', food: { hunger: 12, health: 1, sanity: 0 }, cook: 'roastedcarrot' },
-  roastedcarrot: { name: 'Cà rốt nướng', icon: '🍠', stack: 40, food: { hunger: 12, health: 3, sanity: 0 } },
-  morsel: { name: 'Thịt nhỏ', icon: '🥓', stack: 20, from: 'Giết thỏ, hoặc bắt thỏ bằng bẫy', food: { hunger: 9, health: 0, sanity: -10 }, cook: 'cookedmorsel', dry: 'smalljerky' },
-  cookedmorsel: { name: 'Thịt nhỏ nướng', icon: '🍢', stack: 20, food: { hunger: 12, health: 1, sanity: 0 } },
-  monstermeat: { name: 'Thịt quái', icon: '🥩', stack: 20, from: 'Rơi ra khi giết nhện, chó săn', food: { hunger: 18, health: -20, sanity: -15 }, cook: 'cookedmonstermeat', dry: 'monsterjerky' },
-  cookedmonstermeat: { name: 'Thịt quái nướng', icon: '🍖', stack: 20, food: { hunger: 18, health: -3, sanity: -10 } },
-  meat: { name: 'Thịt', icon: '🍗', stack: 20, from: 'Giết lợn (1) hoặc bò lông (3–4)', food: { hunger: 25, health: 1, sanity: -10 }, cook: 'cookedmeat', dry: 'jerky' },
-  cookedmeat: { name: 'Thịt nướng', icon: '🍖', stack: 20, food: { hunger: 25, health: 3, sanity: 0 } },
+  berries: { name: 'Quả mọng', icon: '🫐', stack: 40, from: 'Hái bụi quả mọng (mọc lại sau 1,5 phút)', perish: 720, food: { hunger: 9, health: 0, sanity: 0 }, cook: 'roastedberries' },
+  roastedberries: { name: 'Quả mọng nướng', icon: '🍇', stack: 40, perish: 960, food: { hunger: 12, health: 1, sanity: 0 } },
+  carrot: { name: 'Cà rốt', icon: '🥕', stack: 40, from: 'Nhổ ở đồng cỏ', perish: 720, food: { hunger: 12, health: 1, sanity: 0 }, cook: 'roastedcarrot' },
+  roastedcarrot: { name: 'Cà rốt nướng', icon: '🍠', stack: 40, perish: 960, food: { hunger: 12, health: 3, sanity: 0 } },
+  morsel: { name: 'Thịt nhỏ', icon: '🥓', stack: 20, from: 'Giết thỏ, hoặc bắt thỏ bằng bẫy', perish: 480, food: { hunger: 9, health: 0, sanity: -10 }, cook: 'cookedmorsel', dry: 'smalljerky' },
+  cookedmorsel: { name: 'Thịt nhỏ nướng', icon: '🍢', stack: 20, perish: 960, food: { hunger: 12, health: 1, sanity: 0 } },
+  monstermeat: { name: 'Thịt quái', icon: '🥩', stack: 20, from: 'Rơi ra khi giết nhện, chó săn', perish: 480, food: { hunger: 18, health: -20, sanity: -15 }, cook: 'cookedmonstermeat', dry: 'monsterjerky' },
+  cookedmonstermeat: { name: 'Thịt quái nướng', icon: '🍖', stack: 20, perish: 960, food: { hunger: 18, health: -3, sanity: -10 } },
+  meat: { name: 'Thịt', icon: '🍗', stack: 20, from: 'Giết lợn (1) hoặc bò lông (3–4)', perish: 480, food: { hunger: 25, health: 1, sanity: -10 }, cook: 'cookedmeat', dry: 'jerky' },
+  cookedmeat: { name: 'Thịt nướng', icon: '🍖', stack: 20, perish: 960, food: { hunger: 25, health: 3, sanity: 0 } },
   // Thịt khô: phơi đồ sống ("dry") trên Giàn phơi, mất "dryTime" giây.
   jerky: { name: 'Thịt khô', icon: '🦴', stack: 20, dryTime: 120, food: { hunger: 25, health: 20, sanity: 15 } },
   smalljerky: { name: 'Thịt nhỏ khô', icon: '🥨', stack: 20, dryTime: 60, food: { hunger: 12, health: 8, sanity: 10 } },
@@ -87,6 +88,8 @@ export const ITEMS = {
   monsterstew: { name: 'Thịt quái hầm', icon: '🍲', stack: 10, food: { hunger: 75, health: 5, sanity: -5 } },
   ratatouille: { name: 'Rau củ hầm', icon: '🥘', stack: 10, food: { hunger: 25, health: 20, sanity: 5 } },
   jam: { name: 'Mứt hoa quả', icon: '🍯', stack: 10, food: { hunger: 25, health: 3, sanity: 15 } },
+  // Đồ tươi có hạn dùng "perish" (giây): hết hạn thì thành Đồ ôi thiu, rồi biến mất sau thêm "perish" của nó. Đồ khô và món hầm thì không hỏng.
+  rotten: { name: 'Đồ ôi thiu', icon: '🤢', stack: 40, from: 'Thức ăn để quá lâu bị hỏng', perish: 240, food: { hunger: 3, health: -8, sanity: -15 } },
   salve: { name: 'Thuốc đắp', icon: '🩹', stack: 20, food: { hunger: 0, health: 25, sanity: 0 } },
 
   // Trang bị. "uses": số lần dùng; với giáp là lượng sát thương chặn được; với đồ "burns" là số giây.
