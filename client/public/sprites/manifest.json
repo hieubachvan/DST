@@ -651,6 +651,70 @@
   228,
   187
  ],
+ "bearger": [
+  56,
+  58
+ ],
+ "bearger_roar": [
+  74,
+  64
+ ],
+ "bearger_sleep": [
+  101,
+  51
+ ],
+ "bearger_walk_0": [
+  51,
+  52
+ ],
+ "bearger_walk_1": [
+  53,
+  55
+ ],
+ "bearger_walk_2": [
+  53,
+  59
+ ],
+ "bearger_atk_0": [
+  59,
+  65
+ ],
+ "bearger_atk_1": [
+  52,
+  62
+ ],
+ "bearger_atk_2": [
+  59,
+  62
+ ],
+ "bearger_slam_0": [
+  64,
+  65
+ ],
+ "bearger_slam_1": [
+  70,
+  67
+ ],
+ "bearger_charge_0": [
+  91,
+  62
+ ],
+ "bearger_charge_1": [
+  88,
+  65
+ ],
+ "bearger_charge_2": [
+  92,
+  61
+ ],
+ "bearger_charge_3": [
+  93,
+  58
+ ],
+ "bearger_charge_4": [
+  97,
+  57
+ ],
  "player_suit_idle_down": [
   66,
   105

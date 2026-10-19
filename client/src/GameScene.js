@@ -11,9 +11,15 @@ const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
   campfire: 58, firepit: 46, chest: 42, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
-  rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, player: 68, item: 26,
+  rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
+// Bearger: khung trên tấm hình nhỏ (~55px) nên phóng chung một tỉ lệ để hình không co giãn giữa các khung;
+// Roar / Sleep vẽ to hơn lưới chính ~1.6 lần nên phóng ít hơn.
+const BEARGER_SCALE = 2.3;
+const BEARGER_BIG = new Set(['bearger_roar', 'bearger_sleep']);
+const BOSSES = new Set(['deerclops', 'bearger']);
+const ROAR_RATE = { deerclops: 1, bearger: 0.75 }; // Bearger dùng chung tiếng gầm, phát trầm hơn
 // Vụ nổ khi Deerclops đập xuống: 7 khung, tự to dần rồi tan. Khung to nhất (354px) phủ vừa vùng đập.
 const EXPLOSION = [1, 2, 3, 4, 5, 6, 7].map((i) => `explosion_${i}`);
 const EXPLOSION_MAX_W = 354;
@@ -58,8 +64,8 @@ const DARK_DEPTH = 1e9;
 const UI_DEPTH = 2e9;
 const REPEAT_TYPES = new Set(['tree', 'boulder']);
 const STRUCTURES = new Set(RECIPES.filter((r) => r.place).map((r) => r.id));
-const MOB_NAMES = { spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops' };
-const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4 };
+const MOB_NAMES = { spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops', bearger: 'Bearger' };
+const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3.2 };
 const DIGGABLE = new Set(['sapling', 'grass', 'bush']);
 const NAMES = {
   tree: 'Cây thông', boulder: 'Tảng đá', sapling: 'Cây non', grass: 'Bụi cỏ', bush: 'Bụi quả mọng',
@@ -201,7 +207,7 @@ export class GameScene extends Phaser.Scene {
     s.on('inv', (d) => { this.gear = d.gear; });
     s.on('chest:open', ({ id }) => {
       const o = this.ents.get(id);
-      if (o) this.hud.openChest(id, o.e.slots);
+      if (o) this.hud.openChest(id, o.e.slots, o.e.type);
     });
     s.on('fx', (fx) => this.onFx(fx));
     s.on('say', ({ id, text }) => this.bubble(id, text));
@@ -420,7 +426,7 @@ export class GameScene extends Phaser.Scene {
     if (!o) return this.addEnt(e);
     o.e = e;
     this.refreshEnt(o);
-    if (e.type === 'chest' && this.hud.chestId === e.id) this.hud.renderChest(e.slots);
+    if (e.slots && this.hud.chestId === e.id) this.hud.renderChest(e.slots);
   }
 
   delEnt(id) {
@@ -501,7 +507,7 @@ export class GameScene extends Phaser.Scene {
     c.setSize(56, 40);
     const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1, windupUntil: 0, slamUntil: 0 };
     this.mobs.set(id, m);
-    if (type === 'deerclops') this.roar(x, y);
+    if (BOSSES.has(type)) this.roar(x, y, ROAR_RATE[type]);
     return m;
   }
 
@@ -511,10 +517,10 @@ export class GameScene extends Phaser.Scene {
     if (d < SOUND_RANGE) this.hud.sound.sfx(name, Math.max(0.15, 1 - d / SOUND_RANGE), rate);
   }
 
-  roar(x, y) {
+  roar(x, y, rate = 1) {
     if (this.time.now < this.nextRoar) return;
     this.nextRoar = this.time.now + ROAR_GAP_MS;
-    this.playAt('deerclops_voice', x, y);
+    this.playAt('deerclops_voice', x, y, rate);
   }
 
   bubble(id, text) {
@@ -561,7 +567,8 @@ export class GameScene extends Phaser.Scene {
         const m = this.mobs.get(fx.id);
         if (!m) break;
         m.body.setTintFill(0xffffff);
-        this.time.delayedCall(90, () => m.body.active && m.body.clearTint());
+        // Chớp trắng xong thì trả lại màu đỏ nếu chó đang gồng cắn (để vẫn thấy cảnh báo)
+        this.time.delayedCall(90, () => m.body.active && (this.time.now < (m.lungeUntil ?? 0) ? m.body.setTint(0xff7060) : m.body.clearTint()));
         this.floatText(m.x, m.y - 40, `-${fx.n}`, '#ffe08a');
         break;
       }
@@ -570,13 +577,30 @@ export class GameScene extends Phaser.Scene {
         if (m) this.tweens.add({ targets: m.c, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
         break;
       }
+      // Chó săn lấy đà trước khi cắn: thu mình lại và đỏ dần, chạy ra kịp là né được.
+      case 'lunge': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.lungeUntil = this.time.now + fx.ms;
+        m.body.setTint(0xff7060);
+        this.tweens.add({ targets: m.c, scaleX: 1.12, scaleY: 0.86, duration: fx.ms, onComplete: () => m.c.active && m.c.setScale(1) });
+        this.time.delayedCall(fx.ms, () => m.body.active && m.body.clearTint());
+        break;
+      }
+      case 'miss': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        this.tweens.add({ targets: m.c, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
+        this.floatText(m.x, m.y - 40, 'trượt!', '#cfd8dc');
+        break;
+      }
       // Boss gồng đòn: vẽ vùng sẽ bị đập (nằm trên lớp bóng tối để ban đêm vẫn thấy mà né).
       case 'windup': {
         const m = this.mobs.get(fx.id);
         if (m) {
           m.windupUntil = this.time.now + fx.ms;
-          m.face = fx.x < m.x ? -1 : 1;
-          this.roar(m.x, m.y);
+          if (Math.abs(fx.x - m.x) > 5) m.face = fx.x < m.x ? -1 : 1; // Bearger đập ngay chỗ mình đứng: giữ hướng cũ
+          this.roar(m.x, m.y, ROAR_RATE[m.type]);
         }
         const ring = this.add.circle(fx.x, fx.y, fx.r, 0xff3020, 0.12).setStrokeStyle(3, 0xff5040, 0.9).setDepth(DARK_DEPTH + 1);
         const core = this.add.circle(fx.x, fx.y, fx.r, 0xff3020, 0.3).setDepth(DARK_DEPTH + 1).setScale(0);
@@ -595,6 +619,57 @@ export class GameScene extends Phaser.Scene {
         }
         const d = Math.hypot(this.me.x - fx.x, this.me.y - fx.y);
         if (d < 900) this.cameras.main.shake(300, d < fx.r * 1.5 ? 0.02 : 0.007);
+        break;
+      }
+      // Bearger gồng lao: vạch đường lao (dài len, rộng 2w), phần đỏ đậm chạy dần tới cuối lúc sắp lao.
+      case 'chargewind': {
+        const m = this.mobs.get(fx.id);
+        if (m) {
+          m.chargeWindUntil = this.time.now + fx.ms;
+          m.face = fx.dx < 0 ? -1 : 1;
+          this.roar(m.x, m.y, ROAR_RATE.bearger);
+        }
+        const angle = Math.atan2(fx.dy, fx.dx);
+        const lane = this.add.rectangle(fx.x, fx.y, fx.len, fx.w * 2, 0xff3020, 0.12).setOrigin(0, 0.5).setRotation(angle)
+          .setStrokeStyle(3, 0xff5040, 0.9).setDepth(DARK_DEPTH + 1);
+        const fill = this.add.rectangle(fx.x, fx.y, fx.len, fx.w * 2, 0xff3020, 0.3).setOrigin(0, 0.5).setRotation(angle)
+          .setDepth(DARK_DEPTH + 1).setScale(0, 1);
+        this.tweens.add({ targets: fill, scaleX: 1, duration: fx.ms, onComplete: () => { fill.destroy(); lane.destroy(); } });
+        break;
+      }
+      case 'dash': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.dashUntil = this.time.now + fx.ms;
+        const d = Math.hypot(this.me.x - m.x, this.me.y - m.y);
+        if (d < 900) this.cameras.main.shake(fx.ms, 0.006);
+        break;
+      }
+      // Bearger gồng cào: nửa vòng tròn đỏ phía trước, mờ dần tới lúc cào.
+      case 'swipewind': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.swipeWindUntil = this.time.now + fx.ms;
+        m.face = fx.dx < 0 ? -1 : 1;
+        const angle = Math.atan2(fx.dy, fx.dx);
+        const g = this.add.graphics().setDepth(DARK_DEPTH + 1);
+        g.fillStyle(0xff3020, 0.25).lineStyle(3, 0xff5040, 0.9);
+        g.slice(m.x, m.y, fx.r, angle - Math.PI / 2, angle + Math.PI / 2, false).fillPath().strokePath();
+        this.tweens.add({ targets: g, alpha: 0.5, duration: fx.ms, onComplete: () => g.destroy() });
+        break;
+      }
+      case 'swipe': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.swipeUntil = this.time.now + 300;
+        this.playAt('chop', m.x, m.y, 0.6);
+        break;
+      }
+      case 'eat': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.eatUntil = this.time.now + fx.ms;
+        this.floatText(m.x, m.y - 120, 'Nhồm nhoàm...', '#ffd08a');
         break;
       }
       case 'stun':
@@ -696,6 +771,7 @@ export class GameScene extends Phaser.Scene {
       case 'science': return 'Máy Khoa Học — đứng gần để chế tạo đồ 🔒';
       case 'crockpot': return 'Nồi nấu — đứng gần để nấu món hầm';
       case 'chest': return 'Mở rương';
+      case 'icebox': return 'Mở Hộp Đá Lạnh (đồ ăn hư chậm gấp đôi)';
       case 'trap': return e.caught ? 'Lấy thỏ trong bẫy' : 'Bẫy thỏ (đang chờ)';
       case 'tent': return `Ngủ trong lều (còn ${e.uses ?? 0} lần) — chạng vạng / ban đêm`;
       case 'dryingrack': {
@@ -908,7 +984,8 @@ export class GameScene extends Phaser.Scene {
       m.c.setPosition(m.x, m.y).setDepth(m.y);
       m.body.setFlipX(m.face < 0);
       if (m.type === 'deerclops') this.animBoss(m, moving, time);
-      else m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1;
+      else if (m.type === 'bearger') this.animBearger(m, moving, time);
+      else if (time >= (m.lungeUntil ?? 0)) m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1; // đang gồng cắn: để tween thu mình chạy
     }
 
     for (const b of this.booms.values()) {
@@ -970,6 +1047,24 @@ export class GameScene extends Phaser.Scene {
     if (!art.has(key)) key = 'deerclops';
     if (m.body.texture.key !== key) m.body.setTexture(key);
     m.body.setScale(ART_HEIGHT.deerclops / art.get('deerclops')[1]);
+  }
+
+  // Bearger: lao (charge_0..4) > gồng lao (hét) > gồng đập / đập > gồng cào / cào > ăn > đi > đứng.
+  animBearger(m, moving, time) {
+    if (!art.has('bearger')) return;
+    const cycle = (prefix, n, ms) => `${prefix}_${Math.floor(time / ms) % n}`;
+    let key = 'bearger';
+    if (time < (m.dashUntil ?? 0)) key = cycle('bearger_charge', 5, 70);
+    else if (time < (m.chargeWindUntil ?? 0)) key = 'bearger_roar';
+    else if (time < m.windupUntil) key = 'bearger_slam_0';
+    else if (time < m.slamUntil) key = 'bearger_slam_1';
+    else if (time < (m.swipeWindUntil ?? 0)) key = 'bearger_atk_0';
+    else if (time < (m.swipeUntil ?? 0)) key = time < m.swipeUntil - 150 ? 'bearger_atk_1' : 'bearger_atk_2';
+    else if (time < (m.eatUntil ?? 0)) key = Math.floor(time / 300) % 2 ? 'bearger_slam_0' : 'bearger';
+    else if (moving) key = `bearger_walk_${BOSS_WALK[Math.floor(time / 150) % BOSS_WALK.length]}`;
+    if (!art.has(key)) key = 'bearger';
+    if (m.body.texture.key !== key) m.body.setTexture(key);
+    m.body.setScale(BEARGER_BIG.has(key) ? BEARGER_SCALE / 1.6 : BEARGER_SCALE);
   }
 
   // Nút ✋ / ⚔️ trên điện thoại hiện việc sẽ làm với vật / quái gần nhất.

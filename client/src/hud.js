@@ -488,8 +488,10 @@ export class Hud {
 
   // ---------- Rương ----------
 
-  openChest(id, slots) {
+  openChest(id, slots, type = 'chest') {
     this.chestId = id;
+    const r = RECIPES.find((x) => x.id === type);
+    $('chest-title').textContent = `${r?.icon ?? '🧰'} ${r?.name ?? 'Rương'}`;
     $('chest').hidden = false;
     this.renderChest(slots);
     this.render();
@@ -618,9 +620,9 @@ export class Hud {
     const el = $('bossbar');
     el.hidden = !bo;
     if (!bo) return;
-    const [, hp, max] = bo;
+    const [, hp, max, name = 'Deerclops'] = bo;
     $('bossfill').style.width = `${(hp / max) * 100}%`;
-    $('bosstext').textContent = `Deerclops — ${hp} / ${max}`;
+    $('bosstext').textContent = `${name} — ${hp} / ${max}`;
   }
 
   // Banner cảnh báo giữa màn hình (chó săn sắp tới...)

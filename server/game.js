@@ -8,8 +8,13 @@ const SAVE_EVERY_MS = 30000;
 const PAUSE_WHEN_EMPTY = process.env.PAUSE_WHEN_EMPTY !== '0';
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
-// Chó săn: đợt đầu vào khoảng ngày 4, sau đó cứ 2.5–4 ngày một đợt, càng về sau càng đông.
-const HOUND = { firstDay: 3.5, gapMin: 2.5, gapMax: 4, base: 2, perDays: 4, max: 6, warnAt: [25, 10], spawnDist: 650 };
+// Chó săn: đợt đầu vào khoảng ngày 6, sau đó cứ 3–5 ngày một đợt, cứ 5 ngày thêm 1 con (tối đa 5 con mỗi người).
+// Các con tới cách nhau stagger giây. Đợt chó không trùng Deerclops: nếu boss đang ở đây hoặc sắp tới
+// trong vòng bossGap giây thì hoãn thêm postpone ngày.
+const HOUND = {
+  firstDay: 5.5, gapMin: 3, gapMax: 5, base: 2, perDays: 5, max: 5, warnAt: [25, 10], spawnDist: 650, stagger: 1.5,
+  bossGap: 60, postpone: 0.5, spread: 30,
+};
 
 // Boss Deerclops: tới vào đầu ngày 11 (~phút 40). Bị hạ thì 10 ngày sau quay lại; bỏ đi thì 3 ngày sau quay lại.
 // Đòn vồ: gồng windupMs rồi đập xuống vùng tròn slamR quanh chỗ người chơi đứng lúc bắt đầu gồng (chạy ra là né được).
@@ -21,6 +26,37 @@ const BOSS = {
   hp: 1500, hpPerPlayer: 750, hpMax: 4000, meleeMul: 0.5, smashChance: 0.5,
   slamMax: 90, slamMin: 30, slamR: 140, stunR: 50, stunMs: 500, reach: 120, windupMs: 900, recoverMs: 1400, leaveAfter: 45,
 };
+
+// Boss Bearger: tới vào đầu ngày 20 (~phút 76), lịch quay lại giống Deerclops. Đánh cận chiến được bình thường.
+// Cào: tới gần thì gồng swipeWindup rồi cào nửa vòng tròn phía trước (bán kính swipeR).
+// Đập đất: cứ slamEvery đòn thì một đòn đập quanh chính nó, giống Deerclops (có choáng, phá công trình).
+// Lao: người chơi ở cách chargeMin–chargeMax thì gồng chargeWindup (vạch đường lao), rồi lao thẳng chargeLen
+// với tốc độ chargeSpeed, ai đứng trong vệt rộng chargeW bị trúng; lao xong thì đứng thở chargeRecover (lúc đánh dễ nhất).
+// Tham ăn: ngửi thấy đồ ăn trong bán kính smell (đồ rơi dưới đất, rương, giàn phơi) thì bỏ người chơi đi ăn,
+// đứng ăn eatMs rồi xóa sạch đồ ăn ở đó. Bị đánh thì nổi giận, bỏ ăn và chỉ đuổi người trong angryMs.
+const BEARGER = {
+  firstDay: 20, gapDays: 10, returnDays: 3, warnAt: [30, 10], spawnDist: 700,
+  hp: 3000, hpPerPlayer: 1200, hpMax: 7000, smashChance: 0.6, leaveAfter: 45,
+  swipeReach: 100, swipeR: 130, swipeDmg: 45, swipeWindup: 550, swipeRecover: 900,
+  slamEvery: 3, slamR: 170, slamMax: 75, slamMin: 30, slamWindup: 1100, slamRecover: 1500, stunR: 70, stunMs: 600,
+  chargeMin: 220, chargeMax: 650, chargeLen: 620, chargeW: 60, chargeSpeed: 650, chargeWindup: 900, chargeDmg: 60,
+  chargeStunMs: 600, chargeCd: 9000, chargeRecover: 1600,
+  smell: 500, eatMs: 2500, angryMs: 6000,
+};
+// Lịch và lời báo của từng boss. Mỗi lúc chỉ có một boss trong thế giới.
+const BOSS_TYPES = {
+  deerclops: {
+    cfg: BOSS, killed: 'Nhặt Mắt Deerclops để chế đồ mới.',
+    warn: ['Mặt đất rung chuyển... Có thứ gì đó khổng lồ đang tới!', 'Deerclops sắp xuất hiện! Chuẩn bị boomerang!'],
+  },
+  bearger: {
+    cfg: BEARGER, killed: 'Nhặt Lông Gấu để chế Hộp Đá Lạnh.',
+    warn: ['Có tiếng gầm gừ và mùi lông thú... Thứ gì đó đang đói!', 'Bearger sắp xuất hiện! Cất kỹ đồ ăn!'],
+  },
+};
+const BOSS_BUSY_DELAY = 0.5; // tới lịch mà boss khác đang ở đây thì lùi lại chừng này ngày
+const ICEBOX_RATE = 0.5; // đồ trong Hộp Đá Lạnh cũ đi bằng chừng này so với bình thường
+const CONTAINERS = new Set(['chest', 'icebox']);
 
 const VIEW_CHUNKS = 1; // gửi các chunk trong bán kính 1 quanh người chơi (lưới 3x3)
 const KEEP_CHUNKS = 2; // chỉ bỏ chunk khi đã ra xa hơn bán kính này (tránh gửi đi gửi lại)
@@ -42,8 +78,11 @@ const MOBS = {
     drops: [['monstermeat', 1, 1], ['silk', 1, 0.5]], perPlayer: 3, home: 'forest', safeFromSpawn: 900,
   },
   hound: {
-    name: 'chó săn', hp: 150, speed: 215, wander: 60, damage: 20, cooldown: 1800, sight: 900, daySight: 900, leash: 2000,
+    name: 'chó săn', hp: 150, speed: 190, wander: 60, damage: 20, cooldown: 1800, sight: 900, daySight: 900, leash: 2000,
     hostile: true, drops: [['monstermeat', 1, 1], ['monstermeat', 1, 0.3]], perPlayer: 0,
+    // Gồng windup ms rồi mới cắn; lúc cắn mà người chơi đã ra ngoài biteRange thì trượt.
+    // Bị đánh trúng thì khựng: đòn cắn kế tiếp lùi lại ít nhất stagger ms (mỗi chu kỳ cắn chỉ khựng một lần).
+    windup: 450, biteRange: 50, stagger: 300,
   },
   rabbit: {
     name: 'thỏ', hp: 25, speed: 230, wander: 45, flee: 150,
@@ -60,7 +99,11 @@ const MOBS = {
   },
   deerclops: {
     name: 'Deerclops', hp: BOSS.hp, speed: 115, wander: 40, sight: 1400, daySight: 1400, leash: 2600, hostile: true, boss: true,
-    drops: [['deerclops_eyeball', 2, 1], ['meat', 8, 1]], perPlayer: 0,
+    meleeMul: BOSS.meleeMul, drops: [['deerclops_eyeball', 2, 1], ['meat', 8, 1]], perPlayer: 0,
+  },
+  bearger: {
+    name: 'Bearger', hp: BEARGER.hp, speed: 150, wander: 40, sight: 1400, daySight: 1400, leash: 2600, hostile: true, boss: true,
+    drops: [['bearger_fur', 1, 1], ['meat', 8, 1]], perPlayer: 0,
   },
 };
 
@@ -176,8 +219,8 @@ export class Game {
     this.nextHound = HOUND.firstDay * DAY_LEN;
     this.houndWarned = 0;
     this.houndQueue = [];
-    this.nextBoss = (BOSS.firstDay - 1) * DAY_LEN;
-    this.bossWarned = 0;
+    this.bossAt = Object.fromEntries(Object.entries(BOSS_TYPES).map(([type, b]) => [type, (b.cfg.firstDay - 1) * DAY_LEN]));
+    this.bossWarned = Object.fromEntries(Object.keys(BOSS_TYPES).map((type) => [type, 0]));
     this.booms = new Map(); // boomerang đang bay
 
     if (data) this.restore(data);
@@ -219,7 +262,8 @@ export class Game {
     for (const p of this.players.values()) this.saves.set(p.token, this.snapshotPlayer(p));
     try {
       this.persist({
-        version: 1, seed: this.seed, t: this.t, nextId: this.nextId, nextHound: this.nextHound, nextBoss: this.nextBoss,
+        version: 1, seed: this.seed, t: this.t, nextId: this.nextId, nextHound: this.nextHound,
+        nextBoss: this.bossAt.deerclops, nextBearger: this.bossAt.bearger,
         respawnQueue: this.respawnQueue, chunks: [...this.chunks.keys()],
         ents: [...this.ents.values()], players: Object.fromEntries(this.saves),
       }, this.day);
@@ -234,7 +278,9 @@ export class Game {
     this.nextId = data.nextId;
     this.nextHound = data.nextHound ?? this.nextHound;
     // Thế giới cũ (trước khi có boss) đã qua ngày 11 thì cho boss tới sau 1 phút, có báo trước.
-    this.nextBoss = data.nextBoss ?? Math.max(this.nextBoss, this.t + 60);
+    this.bossAt.deerclops = data.nextBoss ?? Math.max(this.bossAt.deerclops, this.t + 60);
+    // Thế giới cũ (trước khi có Bearger) đã qua ngày 20 thì cho Bearger tới sau 1 ngày.
+    this.bossAt.bearger = data.nextBearger ?? Math.max(this.bossAt.bearger, this.t + DAY_LEN);
     this.respawnQueue = data.respawnQueue ?? [];
     for (const key of data.chunks) this.chunks.set(key, new Set());
     for (const e of data.ents) {
@@ -728,7 +774,7 @@ export class Game {
 
   actStructure(p, e) {
     if (ITEMS[p.gear.hand?.id]?.tool === 'hammer') return this.hammer(p, e);
-    if (e.type === 'chest') {
+    if (CONTAINERS.has(e.type)) {
       p.chest = e.id;
       p.socket.emit('chest:open', { id: e.id });
       return;
@@ -831,9 +877,21 @@ export class Game {
   // Trả về true nếu quái chết.
   damageMob(p, m, dmg, ranged) {
     const def = MOBS[m.type];
-    if (def.boss && !ranged) dmg = Math.round(dmg * BOSS.meleeMul);
+    if (def.meleeMul && !ranged) dmg = Math.round(dmg * def.meleeMul);
     m.hp -= dmg;
     m.target = p.id;
+    m.hitAt = Date.now();
+    if (def.boss) p.bossSafeLost = p.safeUntil; // đánh boss thì boss được đánh lại ngay
+    if (m.act?.kind === 'eat') m.act = null; // Bearger đang ăn mà bị đánh thì bỏ ăn
+    m.food = null;
+    if (def.stagger) {
+      const now = Date.now();
+      if (now - (m.staggered ?? 0) > def.cooldown) {
+        m.staggered = now;
+        m.atk = Math.max(m.atk, now + def.stagger);
+        if (m.lunge) m.lunge = Math.max(m.lunge, now + def.stagger); // đang gồng cắn thì cú cắn cũng bị lùi lại
+      }
+    }
     // Đánh một con bò lông là cả đàn quanh đó lao vào.
     if (def.herd) for (const o of this.mobs.values()) if (o.type === m.type && dist(o, m) < def.herd) o.target = p.id;
     this.emit('fx', { k: 'hit', id: m.id, n: dmg, by: ranged ? undefined : p.id });
@@ -844,10 +902,11 @@ export class Game {
       if (Math.random() < chance) this.spawnDrop(m.x + rand(-40, 40), m.y + rand(-20, 20), { id, count: n });
     }
     if (def.boss) {
-      this.nextBoss = this.t + BOSS.gapDays * DAY_LEN;
-      this.bossWarned = 0;
-      this.emit('warn', { text: `${p.name} đã hạ gục Deerclops! Nhặt Mắt Deerclops để chế đồ mới.`, big: true });
-      this.system(`🏆 ${p.name} đã hạ gục Deerclops!`);
+      const b = BOSS_TYPES[m.type];
+      this.bossAt[m.type] = this.t + b.cfg.gapDays * DAY_LEN;
+      this.bossWarned[m.type] = 0;
+      this.emit('warn', { text: `${p.name} đã hạ gục ${def.name}! ${b.killed}`, big: true });
+      this.system(`🏆 ${p.name} đã hạ gục ${def.name}!`);
     }
     return true;
   }
@@ -906,7 +965,10 @@ export class Game {
           if (Math.hypot(gx - b.x, gy - b.y) < BOOMERANG.hitR) {
             b.item.dur -= 1;
             const killed = this.damageMob(owner, m, ITEMS[b.item.id].damage, true);
-            if (!killed && !MOBS[m.type].boss) m.stunUntil = now + BOOMERANG.stunMs;
+            if (!killed && !MOBS[m.type].boss) {
+              m.stunUntil = now + BOOMERANG.stunMs;
+              m.lunge = 0; // choáng thì bỏ cú cắn đang gồng
+            }
             this.emit('fx', { k: 'boomhit', x: b.x, y: b.y });
             b.back = true;
           }
@@ -1051,7 +1113,7 @@ export class Game {
     if (recipe.place) {
       const extra = {};
       if (FIRES[recipe.id]) extra.fuel = FIRES[recipe.id].start;
-      if (recipe.id === 'chest') extra.slots = Array(CHEST_SIZE).fill(null);
+      if (CONTAINERS.has(recipe.id)) extra.slots = Array(CHEST_SIZE).fill(null);
       if (recipe.id === 'trap') extra.caught = false;
       if (recipe.id === 'tent') extra.uses = TENT_USES;
       if (recipe.id === 'dryingrack') extra.dry = null;
@@ -1067,7 +1129,7 @@ export class Game {
 
   openChest(p) {
     const c = this.ents.get(p.chest);
-    if (!c || c.type !== 'chest' || p.dead || dist(p, c) > ACT_RANGE + 100) {
+    if (!c || !CONTAINERS.has(c.type) || p.dead || dist(p, c) > ACT_RANGE + 100) {
       p.chest = null;
       return null;
     }
@@ -1108,11 +1170,18 @@ export class Game {
     if (process.env.DEV === '1' && text === '/hounds') {
       this.nextHound = this.t + 12; // gọi đàn chó săn tới sau ~12 giây
       this.houndWarned = 0;
+      this.houndForced = true; // không hoãn dù Deerclops đang ở đây
       return;
     }
-    if (process.env.DEV === '1' && text === '/boss') {
-      this.nextBoss = this.t + 12; // gọi Deerclops tới sau ~12 giây
-      this.bossWarned = 0;
+    // /boss hoặc /boss deerclops: gọi Deerclops; /boss bearger: gọi Bearger (tới sau ~12 giây)
+    const bossCmd = text.match(/^\/boss(?:\s+(\w+))?$/);
+    if (process.env.DEV === '1' && bossCmd) {
+      const type = bossCmd[1]?.toLowerCase() ?? 'deerclops';
+      if (!BOSS_TYPES[type]) return this.fail(p, `Không có boss "${type}". Có: ${Object.keys(BOSS_TYPES).join(', ')}.`);
+      if ([...this.mobs.values()].some((m) => m.type === type)) return this.fail(p, `${MOBS[type].name} đang ở đây rồi.`);
+      this.bossAt[type] = this.t + 12;
+      this.bossWarned[type] = 0;
+      this.bossForced = type; // không bị lùi lịch dù boss khác đang ở đây
       return;
     }
     if (process.env.DEV === '1' && text.startsWith('/give ')) {
@@ -1162,7 +1231,7 @@ export class Game {
       const bs = [];
       for (const b of this.booms.values()) if (near(b)) bs.push([b.id, Math.round(b.x), Math.round(b.y), b.owner]);
       const snap = { t, p: ps, m: ms, b: bs };
-      if (boss && near(boss)) snap.bo = [boss.id, Math.max(0, Math.round(boss.hp)), boss.maxHp];
+      if (boss && near(boss)) snap.bo = [boss.id, Math.max(0, Math.round(boss.hp)), boss.maxHp, MOBS[boss.type].name];
       p.socket.emit('snap', snap);
     }
 
@@ -1250,10 +1319,24 @@ export class Game {
         continue;
       }
       if (m.stunUntil > now) continue;
-      if (def.boss) this.updateBoss(m, def, dt, now);
+      if (m.type === 'bearger') this.updateBearger(m, def, dt, now);
+      else if (def.boss) this.updateBoss(m, def, dt, now);
       else if (def.hostile) this.updateHostile(m, def, dt, now, phase);
       else if (def.neutral) this.updateNeutral(m, def, dt, now);
       else this.updatePassive(m, def, dt, now);
+    }
+
+    // Đẩy các con chó săn đứng quá sát nhau ra, để cả đàn không dồn vào một điểm rồi cắn cùng lúc.
+    const hounds = [...this.mobs.values()].filter((m) => m.type === 'hound');
+    for (let i = 0; i < hounds.length; i++) {
+      for (let j = i + 1; j < hounds.length; j++) {
+        const a = hounds[i], b = hounds[j];
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+        if (d >= HOUND.spread) continue;
+        const ux = d ? dx / d : 1, uy = d ? dy / d : 0, push = (HOUND.spread - d) / 2;
+        a.x -= ux * push; a.y -= uy * push;
+        b.x += ux * push; b.y += uy * push;
+      }
     }
 
     // Thỏ đi ngang bẫy sẽ bị bắt.
@@ -1272,6 +1355,11 @@ export class Game {
 
   // Báo trước rồi thả một đàn chó săn nhắm vào từng người chơi đang sống.
   updateHounds() {
+    // Chưa báo trước mà Deerclops đang ở đây hoặc sắp tới thì hoãn đợt chó, không cho hai thứ trùng nhau.
+    if (!this.houndWarned && !this.houndForced && this.nextHound - this.t <= HOUND.warnAt[0]
+      && (this.boss() || Object.values(this.bossAt).some((at) => Math.abs(at - this.nextHound) < HOUND.bossGap))) {
+      this.nextHound = this.t + HOUND.warnAt[0] + HOUND.postpone * DAY_LEN;
+    }
     const left = this.nextHound - this.t;
     for (let i = this.houndWarned; i < HOUND.warnAt.length; i++) {
       if (left > HOUND.warnAt[i]) break;
@@ -1280,14 +1368,15 @@ export class Game {
     }
     if (left <= 0) {
       const day = Math.floor(this.t / DAY_LEN) + 1;
-      const count = Math.min(HOUND.max, HOUND.base + Math.floor(day / HOUND.perDays));
+      const count = Math.min(HOUND.max, HOUND.base + Math.floor((day - 1) / HOUND.perDays));
       for (const p of this.players.values()) {
         if (p.dead || !p.ready) continue;
-        for (let i = 0; i < count; i++) this.houndQueue.push({ at: this.t + i * 0.8, target: p.id });
+        for (let i = 0; i < count; i++) this.houndQueue.push({ at: this.t + i * HOUND.stagger, target: p.id });
       }
       if (this.houndQueue.length) this.emit('warn', { text: `Chó săn tấn công! (${count} con mỗi người)`, big: true });
       this.nextHound = this.t + rand(HOUND.gapMin, HOUND.gapMax) * DAY_LEN;
       this.houndWarned = 0;
+      this.houndForced = false;
     }
     this.houndQueue = this.houndQueue.filter((q) => {
       if (this.t < q.at) return true;
@@ -1304,28 +1393,59 @@ export class Game {
     return null;
   }
 
-  // Báo trước rồi thả Deerclops nhắm vào một người chơi ngẫu nhiên đang sống.
+  // Báo trước rồi thả từng boss theo lịch, nhắm vào một người chơi ngẫu nhiên đang sống.
+  // Mỗi lúc chỉ một boss: tới lịch mà boss khác đang ở đây thì lùi lại (trừ khi gọi bằng lệnh /boss).
   updateBossSchedule() {
-    if (this.boss()) return;
-    const left = this.nextBoss - this.t;
-    for (let i = this.bossWarned; i < BOSS.warnAt.length; i++) {
-      if (left > BOSS.warnAt[i]) break;
-      this.bossWarned = i + 1;
-      this.emit('warn', { text: i === 0 ? 'Mặt đất rung chuyển... Có thứ gì đó khổng lồ đang tới!' : 'Deerclops sắp xuất hiện! Chuẩn bị boomerang!' });
+    const here = this.boss();
+    for (const [type, { cfg, warn }] of Object.entries(BOSS_TYPES)) {
+      if (here?.type === type) continue;
+      const left = this.bossAt[type] - this.t;
+      if (here && this.bossForced !== type) {
+        if (left <= cfg.warnAt[0]) {
+          // Đã báo "sắp tới" mà phải lùi lịch thì báo lại cho người chơi khỏi chờ.
+          if (this.bossWarned[type]) this.emit('warn', { text: `${MOBS[type].name} đã quay đầu bỏ đi... nhưng nó sẽ quay lại.` });
+          this.bossAt[type] = this.t + cfg.warnAt[0] + BOSS_BUSY_DELAY * DAY_LEN;
+          this.bossWarned[type] = 0;
+        }
+        continue;
+      }
+      for (let i = this.bossWarned[type]; i < cfg.warnAt.length; i++) {
+        if (left > cfg.warnAt[i]) break;
+        this.bossWarned[type] = i + 1;
+        this.emit('warn', { text: warn[i] });
+      }
+      if (left > 0) continue;
+      const alive = [...this.players.values()].filter((p) => !p.dead && p.ready);
+      if (!alive.length) continue;
+      const p = alive[Math.floor(Math.random() * alive.length)];
+      const a = rand(0, Math.PI * 2);
+      const hp = Math.min(cfg.hpMax, cfg.hp + cfg.hpPerPlayer * (alive.length - 1));
+      this.spawnMob(type, p.x + Math.cos(a) * cfg.spawnDist, p.y + Math.sin(a) * cfg.spawnDist, {
+        hp, maxHp: hp, target: p.id, idle: 0, slam: null, act: null,
+      });
+      this.emit('warn', { text: `${MOBS[type].name} đã xuất hiện! (${hp} máu)`, big: true });
+      // Mặc định là bỏ đi rồi quay lại; nếu bị hạ thì damageMob sẽ dời lịch xa hơn.
+      this.bossAt[type] = this.t + cfg.returnDays * DAY_LEN;
+      this.bossWarned[type] = 0;
+      if (this.bossForced === type) this.bossForced = null;
+      return;
     }
-    if (left > 0) return;
-    const alive = [...this.players.values()].filter((p) => !p.dead && p.ready);
-    if (!alive.length) return;
-    const p = alive[Math.floor(Math.random() * alive.length)];
-    const a = rand(0, Math.PI * 2);
-    const hp = Math.min(BOSS.hpMax, BOSS.hp + BOSS.hpPerPlayer * (alive.length - 1));
-    this.spawnMob('deerclops', p.x + Math.cos(a) * BOSS.spawnDist, p.y + Math.sin(a) * BOSS.spawnDist, {
-      hp, maxHp: hp, target: p.id, idle: 0, slam: null,
-    });
-    this.emit('warn', { text: `Deerclops đã xuất hiện! (${hp} máu)`, big: true });
-    // Mặc định là bỏ đi rồi quay lại; nếu bị hạ thì damageMob sẽ dời lịch xa hơn.
-    this.nextBoss = this.t + BOSS.returnDays * DAY_LEN;
-    this.bossWarned = 0;
+  }
+
+  // Mục tiêu của boss: giữ người đang đuổi nếu còn trong tầm, không thì chọn người gần nhất. Bỏ qua người vừa hồi sinh.
+  bossTarget(m, def, now) {
+    let tgt = m.target ? this.players.get(m.target) : null;
+    if (!tgt || !this.bossCanHit(tgt, now) || dist(tgt, m) > def.leash) {
+      tgt = null;
+      let bd = def.sight;
+      for (const p of this.players.values()) {
+        if (!this.bossCanHit(p, now)) continue;
+        const d = dist(p, m);
+        if (d < bd) { bd = d; tgt = p; }
+      }
+      m.target = tgt?.id ?? null;
+    }
+    return tgt;
   }
 
   updateBoss(m, def, dt, now) {
@@ -1333,7 +1453,7 @@ export class Game {
       if (now < m.slam.at) return;
       for (const p of this.players.values()) {
         const d = Math.hypot(p.x - m.slam.x, p.y - m.slam.y);
-        if (p.dead || d >= BOSS.slamR) continue;
+        if (!this.bossCanHit(p, now) || d >= BOSS.slamR) continue;
         const dmg = BOSS.slamMax - (BOSS.slamMax - BOSS.slamMin) * (d / BOSS.slamR);
         this.hurt(p, Math.round(dmg), def.name, { armored: true });
         if (!p.dead && d < BOSS.stunR) {
@@ -1355,17 +1475,7 @@ export class Game {
       m.atk = now + BOSS.recoverMs;
       return;
     }
-    let tgt = m.target ? this.players.get(m.target) : null;
-    if (!tgt || tgt.dead || dist(tgt, m) > def.leash) {
-      tgt = null;
-      let bd = def.sight;
-      for (const p of this.players.values()) {
-        if (p.dead) continue;
-        const d = dist(p, m);
-        if (d < bd) { bd = d; tgt = p; }
-      }
-      m.target = tgt?.id ?? null;
-    }
+    const tgt = this.bossTarget(m, def, now);
     if (!tgt) {
       m.idle += dt;
       if (m.idle > BOSS.leaveAfter) {
@@ -1386,6 +1496,191 @@ export class Game {
     if (d <= BOSS.reach && now >= m.atk) {
       m.slam = { x: tgt.x, y: tgt.y, at: now + BOSS.windupMs };
       this.emit('fx', { k: 'windup', id: m.id, x: Math.round(tgt.x), y: Math.round(tgt.y), r: BOSS.slamR, sr: BOSS.stunR, ms: BOSS.windupMs });
+    }
+  }
+
+  // Món ăn được không (Bearger ăn mọi thứ có chỉ số ăn, kể cả đồ ôi thiu).
+  isFood(it) { return !!(it && ITEMS[it.id]?.food); }
+
+  // Chỗ có đồ ăn gần Bearger nhất trong bán kính ngửi: đồ rơi, rương / hộp đá lạnh, giàn phơi đang phơi.
+  smellFood(m) {
+    let best = null, bd = BEARGER.smell;
+    for (const e of this.entsNear(m.x, m.y, BEARGER.smell)) {
+      const food = e.type === 'drop' ? this.isFood(e.item)
+        : CONTAINERS.has(e.type) ? e.slots?.some((it) => this.isFood(it))
+          : e.type === 'dryingrack' && !!e.dry;
+      if (!food) continue;
+      const d = dist(e, m);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  // Bearger ăn sạch đồ ăn ở một chỗ.
+  eatAt(m, e) {
+    if (!e || !this.ents.has(e.id)) return;
+    let eaten = false;
+    if (e.type === 'drop') {
+      if (this.isFood(e.item)) { this.removeEnt(e); eaten = true; }
+    } else if (CONTAINERS.has(e.type)) {
+      e.slots = e.slots.map((it) => (this.isFood(it) ? ((eaten = true), null) : it));
+      if (eaten) this.updEnt(e);
+    } else if (e.type === 'dryingrack' && e.dry) {
+      e.dry = null;
+      eaten = true;
+      this.updEnt(e);
+    }
+    if (eaten && e.type !== 'drop') {
+      const name = RECIPES.find((r) => r.id === e.type)?.name ?? e.type;
+      this.system(`🐻 Bearger đã ăn sạch đồ ăn trong ${name}!`);
+    }
+  }
+
+  // Boss không nhắm / đánh người vừa hồi sinh (hồi sinh ở điểm xuất phát, boss hay đứng gần đó nên dễ bị giết liên tục),
+  // trừ khi người đó tự đánh boss: khi ấy mất bảo vệ trước boss (vẫn giữ bảo vệ trước bóng tối).
+  bossCanHit(p, now) { return !p.dead && (now >= p.safeUntil || p.bossSafeLost === p.safeUntil); }
+
+  // Trúng người chơi: trừ máu (qua giáp) và có thể làm choáng.
+  bossHit(p, dmg, name, now, stunMs) {
+    if (!this.bossCanHit(p, now)) return;
+    this.hurt(p, Math.round(dmg), name, { armored: true });
+    if (!p.dead && stunMs) {
+      p.stunUntil = now + stunMs;
+      this.emit('fx', { k: 'stun', id: p.id, ms: stunMs });
+    }
+  }
+
+  // Đập vỡ công trình trong vùng tròn, mỗi cái có chance bị phá.
+  smashAround(x, y, r, chance, who) {
+    const smashed = [];
+    for (const e of this.entsNear(x, y, r)) {
+      if (STRUCTURES.has(e.type) && Math.hypot(e.x - x, e.y - y) < r && Math.random() < chance) smashed.push(e);
+    }
+    for (const e of smashed) this.demolish(e);
+    if (smashed.length) {
+      const names = smashed.map((e) => RECIPES.find((r) => r.id === e.type)?.name ?? e.type);
+      this.system(`💥 ${who} đã phá hủy ${[...new Set(names)].join(', ')}!`);
+    }
+  }
+
+  // Bearger: mỗi lúc làm một việc (m.act) — gồng cào, gồng đập, gồng lao, đang lao, đang ăn.
+  // Rảnh thì: ngửi thấy đồ ăn (và không đang giận) thì đi ăn; không thì đuổi người chơi, ở xa thì lao, ở gần thì cào / đập.
+  updateBearger(m, def, dt, now) {
+    const B = BEARGER;
+    const a = m.act;
+    if (a?.kind === 'dash') {
+      const step = Math.min(a.left, B.chargeSpeed * dt);
+      m.x += a.dx * step;
+      m.y += a.dy * step;
+      a.left -= step;
+      for (const p of this.players.values()) {
+        if (p.dead || a.hit.has(p.id) || dist(p, m) >= B.chargeW) continue;
+        a.hit.add(p.id);
+        this.bossHit(p, B.chargeDmg, def.name, now, B.chargeStunMs);
+      }
+      const smashed = [];
+      for (const e of this.entsNear(m.x, m.y, B.chargeW)) {
+        if (!STRUCTURES.has(e.type) || a.rolled.has(e.id) || dist(e, m) >= B.chargeW) continue;
+        a.rolled.add(e.id); // mỗi công trình chỉ tung xúc xắc một lần mỗi cú lao
+        if (Math.random() < B.smashChance) smashed.push(e);
+      }
+      for (const e of smashed) {
+        this.system(`💥 ${def.name} húc đổ ${RECIPES.find((r) => r.id === e.type)?.name ?? e.type}!`);
+        this.demolish(e);
+      }
+      if (a.left <= 0) {
+        m.act = null;
+        m.atk = now + B.chargeRecover;
+        m.chargeAt = now + B.chargeCd;
+      }
+      return;
+    }
+    if (a) {
+      if (now < a.at) return;
+      m.act = null;
+      if (a.kind === 'swipe') {
+        for (const p of this.players.values()) {
+          const dx = p.x - m.x, dy = p.y - m.y, d = Math.hypot(dx, dy);
+          if (p.dead || d >= B.swipeR || dx * a.dx + dy * a.dy < -20) continue; // chỉ nửa phía trước
+          this.bossHit(p, B.swipeDmg, def.name, now);
+        }
+        this.emit('fx', { k: 'swipe', id: m.id });
+        m.atk = now + B.swipeRecover;
+      } else if (a.kind === 'slam') {
+        for (const p of this.players.values()) {
+          const d = Math.hypot(p.x - a.x, p.y - a.y);
+          if (p.dead || d >= B.slamR) continue;
+          this.bossHit(p, B.slamMax - (B.slamMax - B.slamMin) * (d / B.slamR), def.name, now, d < B.stunR ? B.stunMs : 0);
+        }
+        this.emit('fx', { k: 'slam', id: m.id, x: Math.round(a.x), y: Math.round(a.y), r: B.slamR });
+        this.smashAround(a.x, a.y, B.slamR, B.smashChance, def.name);
+        m.atk = now + B.slamRecover;
+      } else if (a.kind === 'charge') {
+        m.act = { kind: 'dash', dx: a.dx, dy: a.dy, left: B.chargeLen, hit: new Set(), rolled: new Set() };
+        this.emit('fx', { k: 'dash', id: m.id, ms: Math.round((B.chargeLen / B.chargeSpeed) * 1000) });
+      } else if (a.kind === 'eat') {
+        this.eatAt(m, this.ents.get(a.ent));
+        m.food = null;
+      }
+      return;
+    }
+
+    // Tham ăn: đi tới chỗ có đồ ăn rồi đứng ăn. Vừa bị đánh thì giận, bỏ qua đồ ăn.
+    const angry = now - (m.hitAt ?? 0) < B.angryMs;
+    if (!angry && now >= (m.sniffAt ?? 0)) {
+      m.sniffAt = now + 1000;
+      m.food = this.smellFood(m)?.id ?? null;
+    }
+    const food = !angry && m.food ? this.ents.get(m.food) : null;
+    if (food) {
+      m.idle = 0;
+      const dx = food.x - m.x, dy = food.y - m.y, d = Math.hypot(dx, dy) || 1;
+      if (d > 50) {
+        m.x += (dx / d) * def.speed * dt;
+        m.y += (dy / d) * def.speed * dt;
+      } else {
+        m.act = { kind: 'eat', at: now + B.eatMs, ent: food.id };
+        this.emit('fx', { k: 'eat', id: m.id, ms: B.eatMs });
+      }
+      return;
+    }
+
+    const tgt = this.bossTarget(m, def, now);
+    if (!tgt) {
+      m.idle += dt;
+      if (m.idle > B.leaveAfter) {
+        this.mobs.delete(m.id);
+        this.emit('fx', { k: 'die', x: m.x, y: m.y, big: true });
+        this.emit('warn', { text: 'Bearger đã bỏ đi... nhưng nó sẽ quay lại.' });
+      } else {
+        this.wander(m, def, dt, now);
+      }
+      return;
+    }
+    m.idle = 0;
+    const dx = tgt.x - m.x, dy = tgt.y - m.y, d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d, uy = dy / d;
+    if (now >= m.atk && now >= (m.chargeAt ?? 0) && d >= B.chargeMin && d <= B.chargeMax) {
+      m.act = { kind: 'charge', at: now + B.chargeWindup, dx: ux, dy: uy };
+      this.emit('fx', {
+        k: 'chargewind', id: m.id, x: Math.round(m.x), y: Math.round(m.y), dx: +ux.toFixed(3), dy: +uy.toFixed(3),
+        len: B.chargeLen, w: B.chargeW, ms: B.chargeWindup,
+      });
+      return;
+    }
+    if (d > B.swipeReach * 0.8) {
+      m.x += ux * def.speed * dt;
+      m.y += uy * def.speed * dt;
+    }
+    if (d <= B.swipeReach && now >= m.atk) {
+      m.swings = (m.swings ?? 0) + 1;
+      if (m.swings % B.slamEvery === 0) {
+        m.act = { kind: 'slam', at: now + B.slamWindup, x: m.x, y: m.y };
+        this.emit('fx', { k: 'windup', id: m.id, x: Math.round(m.x), y: Math.round(m.y), r: B.slamR, sr: B.stunR, ms: B.slamWindup });
+      } else {
+        m.act = { kind: 'swipe', at: now + B.swipeWindup, dx: ux, dy: uy };
+        this.emit('fx', { k: 'swipewind', id: m.id, dx: +ux.toFixed(3), dy: +uy.toFixed(3), r: B.swipeR, ms: B.swipeWindup });
+      }
     }
   }
 
@@ -1414,7 +1709,10 @@ export class Game {
       }
       m.target = tgt?.id ?? null;
     }
-    if (!tgt) return this.wander(m, def, dt, now);
+    if (!tgt) {
+      m.lunge = 0; // mất mục tiêu thì bỏ cú cắn đang gồng
+      return this.wander(m, def, dt, now);
+    }
     this.chase(m, def, tgt, dt, now);
   }
 
@@ -1430,10 +1728,31 @@ export class Game {
 
   chase(m, def, tgt, dt, now) {
     const dx = tgt.x - m.x, dy = tgt.y - m.y, d = Math.hypot(dx, dy);
+    // Đang gồng cắn: đứng yên tới lúc cắn, người chơi kịp chạy ra thì trượt.
+    if (m.lunge) {
+      if (now < m.lunge) return;
+      // Cú cắn đã quá hạn lâu (chó bị choáng, mất mục tiêu rồi quay lại): bỏ, không cắn ngay mà không báo trước.
+      const stale = now - m.lunge > 400; // tick lag tối đa 250ms vẫn cắn bình thường; choáng boomerang 700ms thì hủy
+      m.lunge = 0;
+      if (stale) return;
+      m.atk = now + def.cooldown;
+      if (d <= def.biteRange) {
+        this.emit('fx', { k: 'bite', id: m.id });
+        this.hurt(tgt, def.damage, def.name, { armored: true });
+      } else {
+        this.emit('fx', { k: 'miss', id: m.id });
+      }
+      return;
+    }
     if (d > 34) {
       m.x += (dx / d) * def.speed * dt;
       m.y += (dy / d) * def.speed * dt;
     } else if (now >= m.atk) {
+      if (def.windup) {
+        m.lunge = now + def.windup;
+        this.emit('fx', { k: 'lunge', id: m.id, ms: def.windup });
+        return;
+      }
       m.atk = now + def.cooldown;
       this.emit('fx', { k: 'bite', id: m.id });
       this.hurt(tgt, def.damage, def.name, { armored: true });
@@ -1473,8 +1792,8 @@ export class Game {
         const r = ageItem(e.item, 1);
         if (r === 'gone') this.removeEnt(e);
         else if (r === 'rot') this.updEnt(e);
-      } else if (e.type === 'chest' && e.slots) {
-        if (ageSlots(e.slots, 1) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
+      } else if (CONTAINERS.has(e.type) && e.slots) {
+        if (ageSlots(e.slots, e.type === 'icebox' ? ICEBOX_RATE : 1) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
       }
     }
     for (const p of this.players.values()) {

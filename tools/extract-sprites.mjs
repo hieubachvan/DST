@@ -29,6 +29,7 @@ const SHEETS = {
   deer: { file: 'deerclops.png', mode: 'bg' },
   boom: { file: 'boomerang.png', mode: 'bg' },
   suit: { file: 'player-with-suit.png', mode: 'alpha' },
+  bear: { file: 'bearger.png', mode: 'bg' },
 };
 
 // Tấm deerclops.png: lưới 4 cột x 6 hàng (mỗi ô ~256px). Hàng 2 = đi, hàng 5 = vồ.
@@ -39,6 +40,22 @@ const DEER_SPRITES = {
     .map((b, i) => [`deerclops_walk_${i}`, ['deer', ...b]])),
   deerclops_atk_0: ['deer', 40, 1060, 230, 230],
   deerclops_atk_1: ['deer', 285, 1060, 245, 230],
+};
+
+// Tấm bearger.png: các mục 3 hàng x 8 cột hướng, nhưng nhãn hướng không khớp hình (cột "Walk" đều nhìn thẳng).
+// Chỉ lấy khung quay sang phải (game tự lật cho bên trái): cột thứ 3 của Run (đi) và Attack (cào),
+// hàng 1 và 3 cột đầu của Heavy Attack (gồng / đập đất), 5 khung Charge (lao), Roar và Sleep ở mục Other.
+// Mục Other vẽ to hơn lưới chính ~1.6 lần; GameScene bù lại khi thu phóng.
+// Bỏ "Idle (Big)" và hàng 2 của Heavy Attack: chân tối màu dính vào nền / bóng đổ nên tách nền bị mất chân.
+const BEAR_SPRITES = {
+  bearger: ['bear', 17, 115, 58, 70],
+  bearger_roar: ['bear', 1105, 753, 75, 65],
+  bearger_sleep: ['bear', 1238, 767, 111, 50],
+  ...Object.fromEntries([[1185, 122, 50, 52], [1184, 190, 52, 55], [1184, 261, 52, 58]].map((b, i) => [`bearger_walk_${i}`, ['bear', ...b]])),
+  ...Object.fromEntries([[153, 427, 58, 64], [162, 504, 51, 62], [157, 578, 57, 63]].map((b, i) => [`bearger_atk_${i}`, ['bear', ...b]])),
+  ...Object.fromEntries([[565, 432, 63, 64], [560, 592, 72, 72]].map((b, i) => [`bearger_slam_${i}`, ['bear', ...b]])),
+  ...Object.fromEntries([[560, 766, 90, 62], [657, 764, 87, 65], [751, 765, 92, 63], [849, 769, 93, 59], [952, 771, 97, 57]]
+    .map((b, i) => [`bearger_charge_${i}`, ['bear', ...b]])),
 };
 
 // Nhãn cột trên tấm player-animations.png không khớp với hình vẽ (nhiều cột "Left" thực ra quay sang phải).
@@ -174,6 +191,7 @@ const SPRITES = {
   boomerang: ['boom', 35, 60, 160, 175],
   ...ANIM_SPRITES,
   ...DEER_SPRITES,
+  ...BEAR_SPRITES,
 };
 
 // Hình rời đã có nền trong suốt: chép nguyên vẹn, không cắt.
