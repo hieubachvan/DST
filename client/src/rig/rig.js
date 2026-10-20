@@ -6,10 +6,11 @@
 //
 // Định nghĩa (def):
 //   prefix: tiền tố tên texture, vd 'bearger_p' -> ảnh 'bearger_p12'
-//   bones: [{ name, parent?, x, y, rot?, part?, pivot?: [ox, oy], z?, sx?, sy?, flip? }] — cha khai báo trước con.
+//   bones: [{ name, parent?, x, y, rot?, part?, pivot?: [ox, oy], z?, sx?, sy?, flip?, tint? }] — cha khai báo trước con.
 //          x, y: vị trí khớp trong hệ tọa độ của xương cha (pixel ảnh gốc). rot: độ.
 //          part: số thứ tự mảnh; không có thì là xương ẩn (chỉ để nối).
 //          flip: lật ngang riêng ảnh của xương này (tay / chân bên kia), không ảnh hưởng xương con.
+//          tint: nhuộm màu ảnh (vd. 0xb0b0b0 cho tay / chân phía xa tối hơn).
 //   anims: { tên: (t, pose) => void } — t giây kể từ lúc bắt đầu; ghi đè pose[bone] = { r, x, y, sx, sy, part, z }
 //          (r cộng thêm vào rot gốc, x / y cộng thêm vào vị trí khớp, sx / sy nhân với tỉ lệ gốc, part thay ảnh,
 //          z thay lớp, vd. đưa cánh tay ra trước thân lúc vung).
@@ -29,6 +30,7 @@ export class Rig {
       // lật ảnh thì lật cả điểm neo theo, để khớp vẫn nằm đúng chỗ trên hình (vd. gốc móng)
       const [ox, oy] = b.pivot ?? [0.5, 0.5];
       b.img = scene.add.image(0, 0, `${def.prefix}${b.part}`).setOrigin(b.flip ? 1 - ox : ox, oy).setDepth(b.z).setFlipX(!!b.flip);
+      if (b.tint) b.img.setTint(b.tint);
       this.root.add(b.img);
     }
     this.root.sort('depth'); // sắp lớp một lần theo z (cùng z thì theo thứ tự khai báo)
@@ -102,9 +104,18 @@ export class Rig {
     }
   }
 
+  // Thay ảnh gốc của một xương (đổi đồ: tay cầm rìu, đầu đội nón...), z: đổi lớp nếu cần. Ảnh mới phải cùng điểm neo.
+  setPart(name, part, z) {
+    const b = this.byName[name];
+    if (!b?.img) return;
+    b.part = part;
+    if (z !== undefined) b.z = z;
+  }
+
   setVisible(on) { this.root.setVisible(on); return this; }
   setTintFill(color) { for (const b of this.bones) b.img?.setTintFill(color); }
-  clearTint() { for (const b of this.bones) b.img?.clearTint(); }
+  setTint(color) { for (const b of this.bones) b.img?.setTint(color); }
+  clearTint() { for (const b of this.bones) if (b.img) { b.img.clearTint(); if (b.tint) b.img.setTint(b.tint); } }
 
   destroy() { this.root.destroy(); }
 }

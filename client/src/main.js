@@ -26,8 +26,8 @@ function playerToken() {
   }
 }
 
-const lobby = new Lobby((serverId, passcode, name) => {
-  socket.emit('join', { serverId, passcode, name, token: playerToken() });
+const lobby = new Lobby((serverId, passcode, name, char) => {
+  socket.emit('join', { serverId, passcode, name, char, token: playerToken() });
 });
 let game = null;
 

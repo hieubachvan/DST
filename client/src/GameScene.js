@@ -9,6 +9,8 @@ import { Minimap } from './minimap.js';
 import { art, itemSprite, itemTint, SPRITE_URL, RIG_URL, rigParts } from './art.js';
 import { DirectionalRig, dirOf } from './rig/directional.js';
 import { BEARGER_RIGS } from './rig/bearger.js';
+import { HERO_RIGS, HERO_HEIGHT, HERO_GEAR, equipHero } from './rig/hero.js';
+import { HERO_PARTS } from './rig/hero-parts.js';
 
 // Chiều cao hiển thị (pixel thế giới) của từng sprite thật. Hình vẽ bằng code giữ nguyên cỡ.
 const ART_HEIGHT = {
@@ -53,6 +55,10 @@ const DIR_BY_ANGLE = ['right', 'down_right', 'down', 'down_left', 'left', 'up_le
 // Chu kỳ bước chân: đi -> đứng -> chạy -> đứng (hai chân luân phiên)
 const STEP_CYCLE = ['walk', 'idle', 'run', 'idle'];
 const STEP_MS = 120;
+// Nhân vật ghép mảnh (chọn "Gã tóc cam" lúc vào game): cao hơn nhân vật thường một chút vì đầu to.
+const HERO_H = 80;
+const HERO_SCALE = HERO_H / HERO_HEIGHT;
+const HERO_ATTACK_MS = 450; // giữ dáng đánh / chặt sau mỗi lần thao tác
 const PLAYER_FRAME_H = 110; // chiều cao gốc của khung 8 hướng, dùng chung để nhân vật không co giãn giữa các khung
 
 function dirFromVector(dx, dy) {
@@ -98,6 +104,7 @@ export class GameScene extends Phaser.Scene {
     for (const [tex, name] of Object.entries(TEX_FROM_SPRITE)) {
       if (art.has(name)) this.load.image(tex, `${SPRITE_URL}${name}.png`);
     }
+    for (const name of Object.keys(HERO_PARTS)) this.load.image(`hero_${name}`, `${import.meta.env.BASE_URL}hero/${name}.png`);
     for (const [name, parts] of rigParts) {
       for (const key of Object.keys(parts)) this.load.image(`${name}_${key}`, `${RIG_URL}${name}/${key}.png`);
     }
@@ -513,6 +520,17 @@ export class GameScene extends Phaser.Scene {
 
   applyRoster(pl) {
     const info = this.roster.get(pl.id) || { name: '...', color: 0xffffff };
+    const hero = info.char === 'hero';
+    if (hero && !pl.rig) {
+      pl.rig = new DirectionalRig(this, HERO_RIGS, 0, 0, HERO_SCALE);
+      pl.rigBox = this.add.container(0, 2, pl.rig.roots);
+      pl.c.addAt(pl.rigBox, 2); // trên vòng màu và bóng, dưới đồ cầm tay
+      pl.gearKey = null;
+    } else if (!hero && pl.rig) {
+      pl.rigBox.destroy();
+      pl.rig = pl.rigBox = null;
+    }
+    pl.rig?.clearTint();
     if (pl.sprite) pl.sprite.clearTint();
     else pl.body.setTint(info.color);
     pl.ring.setFillStyle(info.color, 0.55);
@@ -587,6 +605,7 @@ export class GameScene extends Phaser.Scene {
   swing(id) {
     const pl = this.players.get(id);
     if (!pl) return;
+    pl.attackUntil = this.time.now + HERO_ATTACK_MS;
     this.tweens.add({ targets: [pl.item, pl.itemImg], angle: -70 * pl.face, duration: 90, yoyo: true });
   }
 
@@ -840,7 +859,8 @@ export class GameScene extends Phaser.Scene {
       case 'hurt': {
         const pl = this.players.get(fx.id);
         if (!pl) break;
-        (pl.sprite ?? pl.body).setTintFill(0xff4040);
+        if (pl.rig) pl.rig.setTintFill(0xff4040);
+        else (pl.sprite ?? pl.body).setTintFill(0xff4040);
         pl.hurtUntil = this.time.now + 250;
         this.time.delayedCall(120, () => this.applyRoster(pl));
         this.floatText(pl.x, pl.y - 60, `-${fx.n}`, '#ff6a5a');
@@ -1299,7 +1319,8 @@ export class GameScene extends Phaser.Scene {
     // Mờ khi đang ngủ trong lều; nhấp nháy khi vừa hồi sinh (bóng tối chưa tấn công được)
     pl.c.setAlpha(pl.dead ? 1 : pl.asleep ? 0.35 : pl.safe ? 0.65 + Math.sin(time * 0.012) * 0.3 : 1);
     const alive = !pl.dead;
-    const parts = pl.sprite ? [pl.sprite] : [pl.legs, pl.body, pl.head, pl.hair];
+    const parts = pl.rig ? [pl.rigBox] : pl.sprite ? [pl.sprite] : [pl.legs, pl.body, pl.head, pl.hair];
+    if (pl.rig && pl.sprite) pl.sprite.setVisible(false);
     for (const part of [...parts, pl.armor, pl.hat, pl.ring, pl.c.list[1]]) part.setVisible(alive);
     pl.ghost.setVisible(pl.dead);
     if (pl.dead) {
@@ -1311,7 +1332,20 @@ export class GameScene extends Phaser.Scene {
       const bob = pl.moving ? Math.abs(Math.sin(time * 0.015)) * 3 : 0;
       let top; // đỉnh đầu, để đặt mũ
       let suited = false;
-      if (pl.sprite) {
+      if (pl.rig) {
+        // Nhân vật ghép mảnh: 4 hướng, đi / đứng thở / đánh (cầm giáo thì đâm), đồ đã có hình thì mặc lên người.
+        const d = pl.dir ?? 'down';
+        const dir = d.includes('left') ? 'left' : d.includes('right') ? 'right' : d;
+        const anim = time < (pl.attackUntil ?? 0) ? (pl.eq === 'spear' ? 'stab' : 'chop') : pl.moving ? 'walk' : 'idle';
+        const gearKey = `${pl.eq}|${pl.headGear}|${pl.bodyGear}`;
+        if (pl.gearKey !== gearKey) {
+          pl.gearKey = gearKey;
+          equipHero(pl.rig, { hand: pl.eq, head: pl.headGear, body: pl.bodyGear });
+        }
+        pl.rig.set(dir, anim, time);
+        pl.rig.update(time);
+        top = -HERO_H;
+      } else if (pl.sprite) {
         // Hoạt ảnh: chạy khi di chuyển, đứng yên quay mặt ra trước, khựng lại khi bị đánh
         const [base, flip] = DIR_FRAMES[pl.dir ?? 'down'];
         if (art.has(`player_idle_${base}`)) {
@@ -1347,39 +1381,46 @@ export class GameScene extends Phaser.Scene {
       const dir = pl.dir ?? 'down';
       const side = dir.includes('left') ? -1 : dir.includes('right') ? 1 : pl.face;
       const behind = dir.startsWith('up');
-      const key = pl.eq ? itemSprite(pl.eq) : null;
+      // Đồ mà nhân vật ghép mảnh đã cầm / mặc trên hình thì không vẽ thêm biểu tượng.
+      const onRig = (slot, id) => pl.rig && HERO_GEAR[slot].includes(id);
+      const eq = onRig('hand', pl.eq) ? null : pl.eq;
+      const key = eq ? itemSprite(eq) : null;
       pl.itemImg.setVisible(!!key);
       pl.item.setVisible(!key);
       if (key) {
         if (pl.itemImg.texture.key !== key) pl.itemImg.setTexture(key);
-        if (itemTint(pl.eq)) pl.itemImg.setTint(itemTint(pl.eq));
+        if (itemTint(eq)) pl.itemImg.setTint(itemTint(eq));
         else pl.itemImg.clearTint();
         pl.itemImg.setScale(30 / pl.itemImg.height).setFlipX(side < 0);
       }
-      pl.item.setText(!key && pl.eq ? ITEMS[pl.eq]?.icon ?? '' : '');
+      pl.item.setText(!key && eq ? ITEMS[eq]?.icon ?? '' : '');
       for (const it of [pl.item, pl.itemImg]) {
         it.x = 17 * side;
         it.y = -24 - bob;
       }
-      if (pl.sprite) {
+      const fig = pl.rigBox ?? pl.sprite;
+      if (fig) {
         // Quay lưng: đồ cầm tay nằm sau người; còn lại nằm trước
         const list = pl.c.list;
-        const si = list.indexOf(pl.sprite), ii = list.indexOf(pl.itemImg);
+        const si = list.indexOf(fig), ii = list.indexOf(pl.itemImg);
         if (behind && ii > si) {
-          pl.c.moveBelow(pl.itemImg, pl.sprite);
-          pl.c.moveBelow(pl.item, pl.sprite);
+          pl.c.moveBelow(pl.itemImg, fig);
+          pl.c.moveBelow(pl.item, fig);
         } else if (!behind && ii < si) {
-          pl.c.moveAbove(pl.itemImg, pl.sprite);
-          pl.c.moveAbove(pl.item, pl.sprite);
+          pl.c.moveAbove(pl.itemImg, fig);
+          pl.c.moveAbove(pl.item, fig);
         }
       }
-      pl.armor.setText(pl.bodyGear && !suited ? ITEMS[pl.bodyGear]?.icon ?? '' : '');
+      pl.armor.setText(pl.bodyGear && !suited && !onRig('body', pl.bodyGear) ? ITEMS[pl.bodyGear]?.icon ?? '' : '');
       pl.armor.y = -22 - bob;
-      pl.hat.setText(pl.headGear ? ITEMS[pl.headGear]?.icon ?? '' : '');
+      pl.hat.setText(pl.headGear && !onRig('head', pl.headGear) ? ITEMS[pl.headGear]?.icon ?? '' : '');
       pl.hat.y = top + 6 - bob;
       // Trúng độc: nhuộm xanh (trừ lúc đang chớp đỏ vì bị đánh); hết độc thì trả lại màu gốc.
       const poisoned = pl.poisoned && time >= pl.hurtUntil;
-      if (poisoned) (pl.sprite ?? pl.body).setTint(POISON_TINT);
+      if (poisoned) {
+        if (pl.rig) pl.rig.setTint(POISON_TINT);
+        else (pl.sprite ?? pl.body).setTint(POISON_TINT);
+      }
       else if (pl.poisonShown && time >= pl.hurtUntil) this.applyRoster(pl);
       pl.poisonShown = poisoned;
       const stunned = pl.stunned || (pl === this.me && time < this.stunUntil);
@@ -1390,7 +1431,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     if (pl.dead) pl.stars.setVisible(false);
-    const h = pl.sprite ? ART_HEIGHT.player : 58;
+    const h = pl.rig ? HERO_H : pl.sprite ? ART_HEIGHT.player : 58;
     pl.label.setPosition(pl.x, pl.y - h - 8).setScale(1 / this.zoom);
     pl.bubble.setPosition(pl.x, pl.y - h - 8 - 20 / this.zoom).setScale(1 / this.zoom);
   }
