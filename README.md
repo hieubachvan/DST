@@ -50,6 +50,7 @@ Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=
 - **Túi đồ**: chuột trái để ăn, trang bị hoặc thêm củi vào lửa. Chuột phải để nướng (khi đứng gần lửa) hoặc vứt. Phím **1–0** để dùng nhanh
 - **Enter**: chat
 - **Ba lô** đeo ở ô Giáp, thêm 8 ô đồ. **Xẻng** đào bụi cỏ / cây non / bụi quả mọng để đem trồng (chuột trái vào cây đã đào). **Lều**: bấm vào lúc chạng vạng hoặc ban đêm để ngủ an toàn. **Giàn phơi**: đứng gần, chuột phải vào thịt sống để phơi. Chuột phải vào Gỗ khi gần lửa để đốt thành Than.
+- **Nhện chúa** ngủ trong các **ổ nhện** ở rừng (hiện trên bản đồ), quanh ổ có nhện con canh. Đánh thì nó thức dậy: cắn, phun độc, tỏa độc và gọi thêm nhện con. **Trúng độc** làm máu tụt dần, giáp không chặn được; Thuốc đắp / Thuốc giải chữa khỏi. Hạ nó được Độc nhện và Nanh nhện để chế **Giáo Nanh Nhện**, **Boomerang Độc** (làm quái trúng độc, boss chịu một nửa) và **Thuốc giải**. Ổ có Nhện chúa mới sau vài ngày. Thử nhanh khi chạy `DEV=1`: gõ `/den` để tới ổ gần nhất.
 - **Lợn** (rừng) và **bò lông** (vùng đất đá) hiền, chỉ đánh lại khi bị đánh; đánh một con bò là cả đàn lao vào. Giết chúng để lấy Thịt.
 
 **Trên điện thoại / máy tính bảng** (tự nhận ra khi chạm vào màn hình): chạm vào mặt đất để đi, chạm vào vật / quái để tương tác. Muốn có cần điều khiển và nút giữ ✋ thu thập, ⚔️ tấn công thì bấm nút 🕹️. Chạm vào ô đồ để dùng, giữ lâu để mở menu nướng / phơi / vứt. Các nút 🛠️ 💬 ❓ ⛶ ở góc trái trên mở bảng chế tạo, chat, hướng dẫn, toàn màn hình. Thử giao diện điện thoại trên máy tính bằng cách thêm `?touch=1` vào địa chỉ. Điện thoại cùng mạng wifi vào bằng `http://<IP-máy-tính>:5173` (bản dev) hoặc `:3000`.
@@ -129,13 +130,15 @@ Quy ước tên sprite xuất ra: chữ thường nối bằng `_`. Vật phẩm
 
 ### Thông số thế giới
 
-Khi tạo server, admin mở mục **⚙️ Thông số thế giới** để chọn gói **Dễ / Mặc định / Khó**, rồi chỉnh tiếp từng ô nếu muốn: độ dài ngày và tỉ lệ ngày/đêm, tốc độ đói, đồ ăn hư, tài nguyên mọc lại, công trình bỏ hoang, số nhện và thú, chó săn (bật/tắt, ngày đầu, số lượng), từng boss (bật/tắt, ngày đầu, máu), lịch boss quay lại, mức boss mạnh lên sau mỗi lần bị hạ, và boss với chó săn có được ra cùng lúc không. Không mở mục này thì server dùng gói Mặc định.
+Khi tạo server, admin mở mục **⚙️ Thông số thế giới** để chọn gói **Dễ / Mặc định / Khó**, rồi chỉnh tiếp từng ô nếu muốn: kích thước bản đồ, độ dài ngày và tỉ lệ ngày/đêm, tốc độ đói, đồ ăn hư, tài nguyên mọc lại, công trình bỏ hoang, số nhện và thú, chó săn (bật/tắt, ngày đầu, số lượng), Nhện chúa (bật/tắt, máu, ngày mọc lại, sức độc), từng boss (bật/tắt, ngày đầu, máu), lịch boss quay lại, mức boss mạnh lên sau mỗi lần bị hạ, và boss với chó săn có được ra cùng lúc không. Không mở mục này thì server dùng gói Mặc định.
 
-Thông số **chỉ đặt được lúc tạo**, sau đó admin chỉ xem được (nút *Xem* trong bảng quản trị). Người chơi thấy tên gói trên thẻ server và toàn bộ thông số trong bảng Hướng dẫn khi đã vào game. Server tạo trước khi có tính năng này dùng gói Mặc định. Thêm thông số mới: thêm một dòng vào `SETTINGS` trong `shared/settings.js` rồi đọc `this.cfg.<tên>` trong `server/game.js`.
+Thông số **chỉ đặt được lúc tạo**, sau đó admin chỉ xem được (nút *Xem* trong bảng quản trị). Người chơi thấy tên gói trên thẻ server và toàn bộ thông số trong bảng Hướng dẫn khi đã vào game. Server tạo trước khi có tính năng này dùng gói Mặc định; server tạo trước khi có kích thước bản đồ thì giữ bản đồ vô hạn. Thêm thông số mới: thêm một dòng vào `SETTINGS` trong `shared/settings.js` rồi đọc `this.cfg.<tên>` trong `server/game.js`.
 
 **Khi deploy:** server phải có ổ đĩa lưu lâu dài, nếu không mỗi lần deploy lại là mất hết server. Render gói miễn phí **không** giữ file; cần thêm Persistent Disk (gói trả phí) và trỏ `DATA_DIR` vào đó. Với Docker: `docker run -v ds-data:/app/data -e ADMIN_PASSWORD=... -p 3000:3000 dont-starve-web`.
 
-## Thế giới vô hạn
+## Bản đồ
+
+Thế giới là một hòn đảo quanh điểm hồi sinh, bờ biển uốn lượn theo seed. Kích thước chọn lúc tạo server: **Nhỏ** (bán kính ~5000), **Vừa** (~7500, mặc định), **Lớn** (~11000) hoặc **Vô hạn**. Người chơi và quái không xuống biển được, ra tới bờ thì trượt dọc theo bờ. Đảo nào cũng có ít nhất một ổ Nhện chúa (nếu bật).
 
 Thế giới chia thành các chunk 1000×1000. Server chỉ tạo chunk khi có người chơi đi tới gần, và mỗi người chơi chỉ nhận dữ liệu các chunk quanh mình (lưới 3×3, bỏ đi khi ra xa hơn 2 chunk). Vùng đất (đồng cỏ / rừng / đất đá) được tính bằng công thức từ một seed, nên server và client luôn ra cùng kết quả. Muốn tạo lại đúng một thế giới thì đặt `SEED=12345` khi chạy server.
 

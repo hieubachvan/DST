@@ -30,6 +30,28 @@ const SHEETS = {
   boom: { file: 'boomerang.png', mode: 'bg' },
   suit: { file: 'player-with-suit.png', mode: 'alpha' },
   bear: { file: 'bearger.png', mode: 'bg' },
+  queen: { file: 'spider-queen.png', mode: 'bg' },
+};
+
+// Tấm spider-queen.png (nền tím hồng): mỗi hàng một tư thế, mỗi ô một khung.
+// Hàng 1 đi xuống, 2 đi lên, 3 đứng thở, 4 đi sang trái, 5 đi sang phải, 6 độc tỏa vòng tròn,
+// 7 phun độc về trước, 8 chồm cắn (quay phải), 9 bị choáng, 10 gục chết (khung cuối nằm bẹp, dùng khi ngủ).
+const QUEEN_ROWS = {
+  down: [[332, 37, 102, 74], [491, 37, 100, 74], [649, 37, 102, 74], [817, 37, 101, 74]],
+  up: [[337, 152, 87, 89], [495, 152, 86, 88], [653, 152, 88, 88], [820, 152, 89, 89]],
+  idle: [[335, 275, 90, 80], [494, 275, 91, 76], [654, 276, 89, 74], [818, 278, 96, 75]],
+  left: [[335, 399, 95, 70], [490, 400, 100, 70], [653, 401, 100, 71], [817, 403, 99, 69]],
+  right: [[331, 508, 98, 73], [492, 509, 96, 73], [652, 509, 94, 73], [825, 512, 97, 71]],
+  burst: [[334, 622, 95, 74], [490, 623, 95, 73], [650, 622, 101, 76], [814, 623, 112, 76]],
+  spit: [[331, 741, 97, 78], [486, 741, 95, 75], [652, 740, 105, 84], [824, 741, 143, 96]],
+  bite: [[268, 878, 103, 74], [431, 853, 114, 76], [590, 877, 125, 75], [754, 881, 111, 69], [906, 880, 100, 68]],
+  hurt: [[459, 988, 102, 94], [653, 1010, 100, 76]],
+  die: [[337, 1126, 96, 74], [490, 1139, 101, 61], [645, 1149, 104, 50], [801, 1145, 100, 54]],
+};
+const QUEEN_SPRITES = {
+  spiderqueen: ['queen', ...QUEEN_ROWS.idle[0]],
+  ...Object.fromEntries(Object.entries(QUEEN_ROWS).flatMap(([pose, boxes]) =>
+    boxes.map((b, i) => [`spiderqueen_${pose}_${i}`, ['queen', ...b]]))),
 };
 
 // Tấm deerclops.png: lưới 4 cột x 6 hàng (mỗi ô ~256px). Hàng 2 = đi, hàng 5 = vồ.
@@ -192,6 +214,7 @@ const SPRITES = {
   ...ANIM_SPRITES,
   ...DEER_SPRITES,
   ...BEAR_SPRITES,
+  ...QUEEN_SPRITES,
 };
 
 // Hình rời đã có nền trong suốt: chép nguyên vẹn, không cắt.

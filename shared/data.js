@@ -54,7 +54,9 @@ export const ITEMS = {
   rocks: { name: 'Đá', icon: '🪨', stack: 40, from: 'Đập tảng đá xám bằng cuốc chim' },
   flint: { name: 'Đá lửa', icon: '🔷', stack: 40, from: 'Nhặt trên mặt đất (nhiều ở vùng đất đá), hoặc đập tảng đá' },
   gold: { name: 'Vàng', icon: '🪙', stack: 40, from: 'Đập tảng đá bằng cuốc chim (35% mỗi tảng)' },
-  silk: { name: 'Tơ nhện', icon: '🕸️', stack: 40, from: 'Rơi ra khi giết nhện (50%)' },
+  silk: { name: 'Tơ nhện', icon: '🕸️', stack: 40, from: 'Rơi ra khi giết nhện (50%), nhện con, và rất nhiều khi hạ Nhện chúa' },
+  spider_venom: { name: 'Độc nhện', icon: '🧪', stack: 20, from: 'Rơi ra khi hạ Nhện chúa (2–3 cái)' },
+  spider_fang: { name: 'Nanh nhện', icon: '🦷', stack: 20, from: 'Rơi ra khi hạ Nhện chúa (1–2 cái)' },
   deerclops_eyeball: { name: 'Mắt Deerclops', icon: '👁️', stack: 10, from: 'Rơi ra khi hạ boss Deerclops (2 cái)' },
   bearger_fur: { name: 'Lông Gấu', icon: '🐻', stack: 10, from: 'Rơi ra khi hạ boss Bearger' },
   charcoal: { name: 'Than', icon: '⚫', stack: 40, fuel: 50, from: 'Chuột phải vào Gỗ khi đứng gần lửa đang cháy' },
@@ -91,7 +93,9 @@ export const ITEMS = {
   jam: { name: 'Mứt hoa quả', icon: '🍯', stack: 10, food: { hunger: 25, health: 3, sanity: 15 } },
   // Đồ tươi có hạn dùng "perish" (giây): hết hạn thì thành Đồ ôi thiu, rồi biến mất sau thêm "perish" của nó. Đồ khô và món hầm thì không hỏng.
   rotten: { name: 'Đồ ôi thiu', icon: '🤢', stack: 40, from: 'Thức ăn để quá lâu bị hỏng', perish: 240, food: { hunger: 3, health: -8, sanity: -15 } },
-  salve: { name: 'Thuốc đắp', icon: '🩹', stack: 20, food: { hunger: 0, health: 25, sanity: 0 } },
+  // "cures": dùng xong thì hết trúng độc.
+  salve: { name: 'Thuốc đắp', icon: '🩹', stack: 20, cures: true, food: { hunger: 0, health: 25, sanity: 0 } },
+  antidote: { name: 'Thuốc giải', icon: '💊', stack: 20, cures: true, food: { hunger: 0, health: 40, sanity: 0 } },
 
   // Trang bị. "uses": số lần dùng; với giáp là lượng sát thương chặn được; với đồ "burns" là số giây.
   axe: { name: 'Rìu', icon: '🪓', stack: 1, slot: 'hand', tool: 'chop', damage: 27, uses: 100 },
@@ -103,6 +107,9 @@ export const ITEMS = {
   hammer: { name: 'Búa', icon: '🔨', stack: 1, slot: 'hand', tool: 'hammer', damage: 17, uses: 75, hint: 'Bấm vào công trình để đập bỏ, lấy lại một nửa nguyên liệu và đồ bên trong.' },
   spear: { name: 'Giáo', icon: '🔱', stack: 1, slot: 'hand', damage: 34, uses: 150 },
   boomerang: { name: 'Boomerang', icon: '🪃', stack: 1, slot: 'hand', damage: 25, uses: 30, thrown: true },
+  // "poison": mỗi đòn trúng làm quái trúng độc (xem POISON).
+  fangspear: { name: 'Giáo Nanh Nhện', icon: '🔱', stack: 1, slot: 'hand', damage: 45, uses: 200, poison: true },
+  poisonboomerang: { name: 'Boomerang Độc', icon: '🪃', stack: 1, slot: 'hand', damage: 25, uses: 40, thrown: true, poison: true },
   icespear: { name: 'Giáo Băng', icon: '🔱', stack: 1, slot: 'hand', damage: 59, uses: 250 },
   torch: { name: 'Đuốc', icon: '🔥', stack: 1, slot: 'hand', damage: 17, uses: 75, burns: true },
   logsuit: { name: 'Giáp gỗ', icon: '🛡️', stack: 1, slot: 'body', armor: 0.8, uses: 315 },
@@ -137,7 +144,8 @@ export const RECIPES = [
   { id: 'firepit', cat: 'light', name: 'Hố lửa đá', icon: '♨️', place: true, needs: { log: 2, rocks: 12 }, desc: 'Cháy lâu hơn lửa trại và không biến mất khi tắt, chỉ cần thêm củi để nhóm lại.' },
 
   { id: 'trap', cat: 'survival', name: 'Bẫy thỏ', icon: '🪤', place: true, needs: { twigs: 2, cutgrass: 6 }, desc: 'Đặt ở đồng cỏ, thỏ đi ngang sẽ bị bắt. Bấm vào bẫy để lấy thịt.' },
-  { id: 'salve', cat: 'survival', needs: { petals: 3, silk: 1 }, desc: 'Hồi 25 máu.' },
+  { id: 'salve', cat: 'survival', needs: { petals: 3, silk: 1 }, desc: 'Hồi 25 máu và chữa khỏi trúng độc.' },
+  { id: 'antidote', cat: 'survival', needs: { spider_venom: 1, petals: 2 }, desc: 'Chữa khỏi trúng độc và hồi 40 máu. Làm từ Độc nhện của Nhện chúa.' },
   { id: 'backpack', cat: 'survival', needs: { cutgrass: 4, twigs: 4 }, desc: `Đeo ở ô Giáp, thêm ${PACK_SIZE} ô đồ. Cởi ra thì đồ vẫn nằm trong ba lô.` },
   { id: 'tent', cat: 'survival', name: 'Lều', icon: '⛺', place: true, station: 'science', needs: { silk: 4, twigs: 4, rope: 3 }, desc: `Bấm vào lều lúc chạng vạng hoặc ban đêm để ngủ: an toàn trong bóng tối, hồi máu và tinh thần nhưng đói nhanh hơn. Ngủ được ${TENT_USES} lần.` },
   { id: 'dryingrack', cat: 'survival', name: 'Giàn phơi', icon: '🪝', place: true, station: 'science', needs: { rope: 3, twigs: 2, charcoal: 2 }, desc: 'Đứng gần giàn, chuột phải vào thịt sống để phơi thành thịt khô (hồi máu và tinh thần).' },
@@ -153,6 +161,8 @@ export const RECIPES = [
 
   { id: 'spear', cat: 'gear', needs: { twigs: 2, cutgrass: 2, flint: 1 }, desc: 'Vũ khí cơ bản.' },
   { id: 'boomerang', cat: 'gear', station: 'science', needs: { twigs: 3, flint: 2, gold: 1, rope: 1 }, desc: 'Vũ khí tầm xa: bấm vào quái để ném, tự bay về tay. Làm choáng quái thường. Boss Deerclops chỉ chịu nửa sát thương cận chiến, nên cần món này.' },
+  { id: 'fangspear', cat: 'gear', station: 'science', needs: { spider_fang: 2, spider_venom: 1, rope: 2, log: 2 }, desc: 'Giáo làm từ nanh Nhện chúa: sát thương 45, mỗi đòn làm quái trúng độc (boss chịu nửa độc). Độc không tính là cận chiến nên Deerclops vẫn chịu đủ.' },
+  { id: 'poisonboomerang', cat: 'gear', station: 'science', needs: { boomerang: 1, spider_fang: 1, spider_venom: 2 }, desc: 'Boomerang tẩm độc: ném như boomerang thường, trúng thì quái bị trúng độc. Bền hơn boomerang thường.' },
   { id: 'icespear', cat: 'gear', station: 'science', needs: { deerclops_eyeball: 1, gold: 3, rope: 2, flint: 4 }, desc: 'Giáo làm từ mắt Deerclops: sát thương 59, rất bền.' },
   { id: 'furarmor', cat: 'gear', station: 'science', needs: { deerclops_eyeball: 1, rope: 4, log: 8, silk: 4 }, desc: 'Giáp lông Deerclops, chặn 90% sát thương, bền gấp đôi giáp gỗ.' },
   { id: 'logsuit', cat: 'gear', station: 'science', needs: { rope: 2, log: 8 }, desc: 'Giáp mặc người, chặn 80% sát thương.' },
@@ -169,7 +179,10 @@ export const BIOMES = {
   meadow: { color: [112, 136, 60] },
   forest: { color: [56, 82, 44] },
   rocky: { color: [146, 128, 96] },
+  ocean: { color: [38, 84, 120] }, // ngoài bờ biển (bản đồ có giới hạn): không có gì mọc, không đi qua được
 };
+export const SHORE_COLORS = { sand: [196, 178, 128], shallow: [62, 128, 150] };
+export const SHORE_W = 70; // bề rộng dải cát / nước nông vẽ quanh bờ
 
 // Số ngẫu nhiên cố định (0..1) theo seed và tọa độ: cùng đầu vào luôn ra cùng kết quả.
 export function hash(seed, x, y) {
@@ -179,7 +192,32 @@ export function hash(seed, x, y) {
   return (h >>> 0) / 4294967296;
 }
 
-const BIOME_TYPES = Object.keys(BIOMES);
+const BIOME_TYPES = ['meadow', 'forest', 'rocky'];
+
+// Bản đồ có giới hạn: một hòn đảo quanh điểm hồi sinh, bờ biển uốn lượn theo seed. radius = Infinity là thế giới vô hạn.
+// Bán kính bờ theo góc a dao động quanh radius (khoảng ±15%).
+export function coastR(seed, radius, a) {
+  const p = (k) => hash(seed + 20 + k, 0, 0) * Math.PI * 2;
+  return radius * (1 + 0.07 * Math.sin(3 * a + p(0)) + 0.05 * Math.sin(5 * a + p(1)) + 0.03 * Math.sin(11 * a + p(2)));
+}
+
+// Khoảng cách từ (x, y) tới bờ theo hướng từ tâm đảo: dương là trên đảo, âm là ngoài biển.
+export function coastDist(seed, radius, x, y) {
+  if (!Number.isFinite(radius)) return Infinity;
+  const dx = x - SPAWN.x, dy = y - SPAWN.y;
+  return coastR(seed, radius, Math.atan2(dy, dx)) - Math.hypot(dx, dy);
+}
+
+export const onLand = (seed, radius, x, y) => coastDist(seed, radius, x, y) >= 0;
+
+// Điểm ngoài biển (hoặc cách bờ dưới margin) được kéo về theo hướng tâm đảo; null nếu không cần kéo.
+export function clampToLand(seed, radius, x, y, margin = 0) {
+  if (!Number.isFinite(radius)) return null;
+  const dx = x - SPAWN.x, dy = y - SPAWN.y, d = Math.hypot(dx, dy);
+  const r = coastR(seed, radius, Math.atan2(dy, dx)) - margin;
+  if (d <= r) return null;
+  return { x: SPAWN.x + (dx / d) * r, y: SPAWN.y + (dy / d) * r };
+}
 
 // Mỗi ô lưới BIOME_CELL có một tâm ngẫu nhiên; một điểm thuộc vùng của tâm gần nhất.
 // Ô chứa điểm hồi sinh luôn là đồng cỏ.
@@ -192,7 +230,71 @@ function biomeCenter(seed, gx, gy) {
   };
 }
 
-export function biomeAt(seed, x, y) {
+// Trúng độc (giây ms): máu tụt đều trong suốt thời gian độc, bị trúng tiếp thì làm mới chứ không cộng dồn.
+// player: tổng máu người chơi mất mỗi lần trúng (nhân với thông số "poison", bỏ qua giáp).
+// mob: tổng máu quái mất khi trúng vũ khí độc; boss chỉ chịu bossMul.
+export const POISON = { ms: 8000, player: 30, mob: 40, bossMul: 0.5 };
+
+// Ổ Nhện chúa: mỗi ô lưới DEN_CELL có một điểm ứng viên cố định theo seed; DEN_CHANCE số ô có ứng viên, điểm nằm
+// trong rừng và cách điểm hồi sinh ít nhất DEN_SAFE thì có ổ. Server và client tính giống nhau nên bản đồ tự biết ổ ở đâu.
+export const DEN_CELL = 3600;
+export const DEN_CHANCE = 0.5;
+export const DEN_SAFE = 2000;
+
+export function denAt(seed, gx, gy, radius = Infinity) {
+  if (hash(seed + 10, gx, gy) >= DEN_CHANCE) return null;
+  const x = Math.round((gx + 0.2 + 0.6 * hash(seed + 11, gx, gy)) * DEN_CELL);
+  const y = Math.round((gy + 0.2 + 0.6 * hash(seed + 12, gx, gy)) * DEN_CELL);
+  if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < DEN_SAFE || biomeAt(seed, x, y, radius) !== 'forest') return null;
+  if (coastDist(seed, radius, x, y) < 150) return null; // ổ không nằm sát mép biển
+  return { x, y, cell: `${gx},${gy}` };
+}
+
+// Đảo nhỏ có thể không có ô ổ nào trúng rừng: khi đó đặt đúng một ổ dự phòng, ưu tiên trong rừng.
+const fallbackDens = new Map();
+function fallbackDen(seed, radius) {
+  const key = `${seed},${radius}`;
+  if (fallbackDens.has(key)) return fallbackDens.get(key);
+  let found = null;
+  const n = Math.ceil((radius * 1.2) / DEN_CELL);
+  const any = () => {
+    for (let gy = -n; gy <= n; gy++) for (let gx = -n; gx <= n; gx++) if (denAt(seed, gx, gy, radius)) return true;
+    return false;
+  };
+  if (!any()) {
+    let land = null;
+    for (let i = 0; i < 400 && !found; i++) {
+      const a = hash(seed + 13, i, 0) * Math.PI * 2;
+      const r = DEN_SAFE + hash(seed + 14, i, 0) * (radius * 0.85 - DEN_SAFE);
+      const x = Math.round(SPAWN.x + Math.cos(a) * r), y = Math.round(SPAWN.y + Math.sin(a) * r);
+      if (coastDist(seed, radius, x, y) < 150) continue;
+      const d = { x, y, cell: 'fallback' };
+      if (biomeAt(seed, x, y) === 'forest') found = d;
+      else land ??= d;
+    }
+    found ??= land;
+  }
+  fallbackDens.set(key, found);
+  return found;
+}
+
+// Mọi ổ có tọa độ trong hình chữ nhật [x0, x1) × [y0, y1).
+export function densIn(seed, x0, y0, x1, y1, radius = Infinity) {
+  const out = [];
+  for (let gy = Math.floor(y0 / DEN_CELL); gy <= Math.floor(y1 / DEN_CELL); gy++) {
+    for (let gx = Math.floor(x0 / DEN_CELL); gx <= Math.floor(x1 / DEN_CELL); gx++) {
+      const d = denAt(seed, gx, gy, radius);
+      if (d && d.x >= x0 && d.x < x1 && d.y >= y0 && d.y < y1) out.push(d);
+    }
+  }
+  const f = Number.isFinite(radius) && fallbackDen(seed, radius);
+  if (f && f.x >= x0 && f.x < x1 && f.y >= y0 && f.y < y1) out.push(f);
+  return out;
+}
+
+// radius: bán kính đảo (xem coastR), ngoài bờ là 'ocean'.
+export function biomeAt(seed, x, y, radius = Infinity) {
+  if (!onLand(seed, radius, x, y)) return 'ocean';
   const gx = Math.floor(x / BIOME_CELL), gy = Math.floor(y / BIOME_CELL);
   let best = null;
   let bd = Infinity;

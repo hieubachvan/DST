@@ -82,7 +82,7 @@
           <button id="map-close" title="Đóng (Tab / Esc)">✕</button>
         </div>
         <canvas id="map-canvas"></canvas>
-        <small id="map-legend"><i class="lg-me"></i>Bạn · <i class="lg-pl"></i>Người chơi · <i class="lg-fire"></i>Lửa · <i class="lg-mob"></i>Quái · ✦ Hồi sinh</small>
+        <small id="map-legend"><i class="lg-me"></i>Bạn · <i class="lg-pl"></i>Người chơi · <i class="lg-fire"></i>Lửa · <i class="lg-mob"></i>Quái · 🕸 Ổ Nhện chúa · ✦ Hồi sinh</small>
       </div>
 
       <!-- Menu khi giữ lâu vào một ô đồ -->
@@ -162,6 +162,8 @@
             <li><b>Bóng tối</b>: ban đêm đứng ngoài vùng sáng khoảng 4 giây sẽ bị tấn công mất 40 máu, và cứ thế lặp lại.</li>
             <li><b>🕷️ Nhện</b>: sống trong rừng, ban đêm kéo tới chỗ người chơi. Đánh bằng giáo, hoặc chạy thoát (bạn chạy nhanh hơn nhện).</li>
             <li data-w="houndsOn"><b>🐕 Chó săn</b>: khoảng từ <span data-w="houndDay">ngày 5,5</span>, cứ vài ngày lại có một đàn kéo tới tấn công từng người chơi. Sẽ có cảnh báo "tiếng gầm gừ" khoảng 25 giây trước. Chó săn chạy nhanh hơn bạn nên không chạy thoát được: hãy mặc giáp, cầm giáo và đứng cạnh đồng đội. Càng về sau đàn càng đông.</li>
+            <li data-w="queenOn"><b>👑 Nhện chúa</b>: ngủ trong <b>ổ nhện</b> ở rừng (thấy được trên bản đồ, biểu tượng 🕸). Quanh ổ luôn có <b>nhện con</b>, lại gần là chúng đuổi đánh (chúng chạy chậm hơn bạn, chạy ra xa ổ là thoát). Nhện chúa chỉ thức dậy khi bị đánh, máu nhiều hơn khi càng đông người ở quanh ổ. Nó cắn, phun độc thành đường thẳng và tỏa độc quanh người (vùng xanh hiện ra trước khi ra đòn, chạy ra là né được), và gọi thêm nhện con khi yếu dần. Hạ nó được rất nhiều tơ nhện, <b>Độc nhện</b> và <b>Nanh nhện</b> để chế <b>Giáo Nanh Nhện</b>, <b>Boomerang Độc</b> và <b>Thuốc giải</b>. Ổ có Nhện chúa mới sau <span data-w="queenRespawn">6 ngày</span>.</li>
+            <li data-w="queenOn"><b>☠️ Trúng độc</b>: máu tụt dần trong 8 giây, giáp không chặn được. Thanh máu chuyển xanh và nhấp nháy. Dùng <b>Thuốc đắp</b> hoặc <b>Thuốc giải</b> để khỏi ngay. Vũ khí độc cũng làm quái trúng độc như vậy (boss chịu một nửa, Nhện chúa thì miễn độc).</li>
             <li><b>Chết</b>: rơi toàn bộ đồ tại chỗ, thành hồn ma và hồi sinh ở giữa bản đồ sau 12 giây. Quay lại chỗ cũ để nhặt đồ. Vừa hồi sinh thì có <b>25 giây</b> bóng tối chưa tấn công được (nhân vật nhấp nháy). Hồi sinh lúc chạng vạng hoặc ban đêm thì được cầm sẵn một <b>🔥 Đuốc</b>.</li>
           </ul>
         </section>

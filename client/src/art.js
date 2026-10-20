@@ -10,12 +10,14 @@ export const art = new Map();
 // Vật phẩm dùng hình có tên khác mã vật phẩm
 const ITEM_OVERRIDES = {
   petals: 'flower1', dug_grass: 'grass', dug_sapling: 'dead_tree', dug_bush: 'bush',
-  goldenaxe: 'axe', goldenpickaxe: 'pickaxe',
+  goldenaxe: 'axe', goldenpickaxe: 'pickaxe', fangspear: 'spear', poisonboomerang: 'boomerang',
 };
-// Đồ vàng dùng lại hình đồ thường, nhuộm màu vàng.
-const GOLDEN = new Set(['goldenaxe', 'goldenpickaxe']);
-export const GOLD_TINT = 0xffd24a;
-export const isGolden = (id) => GOLDEN.has(id);
+// Đồ vàng / đồ độc dùng lại hình đồ thường, nhuộm màu: mã vật phẩm -> [màu nhuộm trong game, class CSS cho icon].
+const TINTS = {
+  goldenaxe: [0xffd24a, 'golden'], goldenpickaxe: [0xffd24a, 'golden'],
+  fangspear: [0x9be36a, 'venom'], poisonboomerang: [0x9be36a, 'venom'],
+};
+export const itemTint = (id) => TINTS[id]?.[0] ?? null;
 
 export async function loadArt() {
   try {
@@ -51,7 +53,7 @@ export function itemSprite(id) {
 // HTML cho biểu tượng vật phẩm/công thức trong giao diện.
 export function iconHtml(id, fallback) {
   const key = itemSprite(id);
-  if (key) return `<img class="ic sprite${GOLDEN.has(id) ? ' golden' : ''}" src="${SPRITE_URL}${key}.png" alt="">`;
+  if (key) return `<img class="ic sprite${TINTS[id] ? ` ${TINTS[id][1]}` : ''}" src="${SPRITE_URL}${key}.png" alt="">`;
   return `<span class="ic">${fallback ?? ITEMS[id]?.icon ?? '?'}</span>`;
 }
 

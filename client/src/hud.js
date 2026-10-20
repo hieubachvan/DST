@@ -1,6 +1,6 @@
 import {
   ITEMS, RECIPES, CATEGORIES, STATIONS, GEAR_SLOTS, GEAR_NAMES, INV_SIZE, PACK_SIZE, CHEST_SIZE,
-  MAX_HP, MAX_HUNGER, MAX_SANITY, phaseAt,
+  MAX_HP, MAX_HUNGER, MAX_SANITY, POISON, phaseAt,
 } from '../../shared/data.js';
 import { PRESETS, sanitizeSettings, clockOf, presetOf, settingsHtml, durationText } from '../../shared/settings.js';
 import { iconHtml, spriteImg } from './art.js';
@@ -48,6 +48,8 @@ function itemInfo(it) {
   if (def.perish) lines.push(it.id === 'rotten' ? `Sắp biến mất (${Math.round(freshness(it) * 100)}%)` : `Độ tươi ${Math.round(freshness(it) * 100)}%`);
   if (def.pack) lines.push(`Thêm ${PACK_SIZE} ô đồ${it.slots?.some(Boolean) ? ' · đang chứa đồ' : ''}`);
   if (def.fuel) lines.push(`Củi: +${def.fuel} giây`);
+  if (def.poison) lines.push(`Gây độc: quái mất thêm ${POISON.mob} máu trong ${POISON.ms / 1000} giây (boss chịu một nửa)`);
+  if (def.cures) lines.push('Chữa khỏi trúng độc');
   if (def.hint) lines.push(`Cách dùng: ${def.hint}`);
   return lines;
 }
@@ -597,6 +599,8 @@ export class Hud {
       el.classList.toggle('low', !s.dead && v / max < 0.2);
     };
     set('st-hp', s.hp, MAX_HP);
+    $('st-hp').classList.toggle('poisoned', !s.dead && !!s.poison);
+    $('st-hp').title = s.poison ? 'Máu — đang trúng độc! Dùng Thuốc đắp hoặc Thuốc giải để chữa' : 'Máu';
     set('st-hunger', s.hunger, MAX_HUNGER);
     set('st-sanity', s.sanity, MAX_SANITY);
     const r = s.sanity / MAX_SANITY;
@@ -606,6 +610,7 @@ export class Hud {
   // Thông số của thế giới vừa vào (gói init): đồng hồ ngày đêm và các con số trong hướng dẫn.
   setWorld(settings) {
     const cfg = sanitizeSettings(settings);
+    this.cfg = cfg;
     this.clock = clockOf(cfg);
     const { len, dayEnd, duskEnd } = this.clock;
     const deg = (t) => `${(t / len) * 360}deg`;
@@ -622,6 +627,8 @@ export class Hud {
     show('abandonOn', cfg.abandonDays > 0);
     fill('houndDay', `ngày ${String(cfg.houndDay).replace('.', ',')}`);
     show('houndsOn', cfg.hounds);
+    show('queenOn', cfg.spiderQueen);
+    fill('queenRespawn', `${cfg.queenRespawn} ngày`);
     fill('regrow', cfg.regrow === 1 ? '' : ` Ở thế giới này mọi thứ mọc lại ${cfg.regrow > 1 ? 'nhanh' : 'chậm'} hơn (×${String(cfg.regrow).replace('.', ',')}).`);
 
     const preset = presetOf(cfg);

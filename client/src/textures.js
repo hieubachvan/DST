@@ -193,6 +193,67 @@ export function makeTextures(scene) {
     g.fillTriangle(31, 35, 34, 35, 33, 40);
   });
 
+  // Nhện con / Nhện chúa khi chưa có sprite: nhện vẽ bằng code, nhện chúa to và đỏ sẫm có vương miện.
+  gen('spiderling', 42, 30, (g) => {
+    g.lineStyle(2, 0x241414);
+    for (const side of [-1, 1]) for (let i = 0; i < 4; i++) g.lineBetween(21, 15, 21 + side * (14 + i * 2), 8 + i * 5);
+    g.fillStyle(0x3a1f1f);
+    g.fillEllipse(21, 12, 18, 15);
+    g.fillCircle(21, 21, 6);
+    g.fillStyle(0xff3030);
+    g.fillCircle(19, 20, 1.5);
+    g.fillCircle(23, 20, 1.5);
+  });
+  gen('spiderqueen', 110, 80, (g) => {
+    g.lineStyle(5, 0x3a0d14);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const kx = 55 + side * (26 + i * 5), ky = 28 + (i - 1.5) * 12;
+        g.lineBetween(55, 42, kx, ky);
+        g.lineBetween(kx, ky, 55 + side * (48 + i * 2), 62 + (i - 1.5) * 6);
+      }
+    }
+    g.fillStyle(0x6e1424);
+    g.fillEllipse(55, 34, 54, 44);
+    g.fillStyle(0x8a1c30);
+    g.fillCircle(55, 56, 16);
+    g.fillStyle(0xff3030);
+    g.fillCircle(49, 54, 3.5);
+    g.fillCircle(61, 54, 3.5);
+    g.fillStyle(0xf0f0f0);
+    g.fillTriangle(48, 66, 52, 66, 50, 75);
+    g.fillTriangle(58, 66, 62, 66, 60, 75);
+    g.fillStyle(0xf2c230);
+    g.fillTriangle(44, 14, 50, 4, 52, 16);
+    g.fillTriangle(50, 16, 55, 0, 60, 16);
+    g.fillTriangle(58, 16, 60, 4, 66, 14);
+    g.fillRect(44, 14, 22, 5);
+  });
+
+  // Ổ Nhện chúa: gò đất phủ tơ trắng, có hang tối ở giữa và vài sợi tơ giăng xuống đất.
+  gen('spiderden', 130, 86, (g) => {
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(65, 74, 124, 22);
+    g.fillStyle(0x4a3a2c);
+    g.fillEllipse(65, 60, 112, 44);
+    g.fillStyle(0xd8d8d0, 0.9);
+    g.fillEllipse(65, 46, 96, 56);
+    g.fillStyle(0xf2f2ea, 0.85);
+    g.fillEllipse(58, 36, 60, 30);
+    g.lineStyle(2, 0xffffff, 0.7);
+    for (let i = 0; i < 7; i++) {
+      const a = Math.PI * (0.1 + i * 0.13);
+      g.lineBetween(65, 30, 65 - Math.cos(a) * 58, 30 + Math.sin(a) * 46);
+    }
+    g.strokeEllipse(65, 44, 70, 34);
+    g.strokeEllipse(65, 48, 92, 48);
+    g.fillStyle(0x140c08);
+    g.fillEllipse(65, 60, 32, 18);
+    g.fillStyle(0xff3030);
+    g.fillCircle(60, 59, 2);
+    g.fillCircle(70, 59, 2);
+  });
+
   gen('firepit_base', 76, 36, (g) => {
     g.fillStyle(0x3a3530);
     g.fillEllipse(38, 19, 60, 22);

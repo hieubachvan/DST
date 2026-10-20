@@ -5,10 +5,12 @@
 // thêm giá trị cho gói Dễ / Khó nếu muốn khác mặc định, rồi đọc this.cfg.<key> ở server/game.js.
 
 export const SETTING_GROUPS = [
+  { id: 'world', name: 'Bản đồ', icon: '🗺️' },
   { id: 'time', name: 'Thời gian', icon: '🕒' },
   { id: 'survival', name: 'Sinh tồn', icon: '🍖' },
   { id: 'mobs', name: 'Quái thường', icon: '🕷️' },
   { id: 'hounds', name: 'Chó săn', icon: '🐕' },
+  { id: 'queen', name: 'Nhện chúa', icon: '👑' },
   { id: 'bosses', name: 'Boss', icon: '👹' },
 ];
 
@@ -19,10 +21,23 @@ export const PHASE_SPLITS = {
   longnight: { name: 'Đêm dài', day: 0.35, dusk: 0.25 },
 };
 
+// Kích thước bản đồ: bán kính hòn đảo quanh điểm hồi sinh (đơn vị thế giới, người chơi chạy 200/giây).
+// Thế giới tạo trước khi có thông số này được coi là 'infinite' (xem worlds.js).
+export const MAP_SIZES = {
+  small: { name: 'Nhỏ', r: 5000 },
+  medium: { name: 'Vừa', r: 7500 },
+  large: { name: 'Lớn', r: 11000 },
+  infinite: { name: 'Vô hạn', r: Infinity },
+};
+export const mapRadius = (settings) => MAP_SIZES[settings?.mapSize]?.r ?? MAP_SIZES.medium.r;
+
 // type: 'num' (min, max, step, unit; zero: chữ hiện khi bằng 0) | 'bool' | 'select' (options: { giá trị: tên }).
 // Thông số "def" là cách game chạy mặc định; riêng nhóm boss mạnh lên sau mỗi lần bị hạ là luật mới, mặc định bật sẵn.
 // needs: chỉ có tác dụng khi thông số bật/tắt đó đang bật (form làm mờ, bảng tóm tắt bỏ qua).
 export const SETTINGS = [
+  { key: 'mapSize', group: 'world', label: 'Kích thước bản đồ', type: 'select', def: 'medium',
+    options: Object.fromEntries(Object.entries(MAP_SIZES).map(([k, v]) => [k, v.name])),
+    desc: 'Thế giới là một hòn đảo bao quanh bởi biển. Vô hạn: đi mãi không hết (server nặng dần theo vùng đã khám phá).' },
   { key: 'dayMinutes', group: 'time', label: 'Độ dài một ngày', type: 'num', min: 2, max: 20, step: 1, unit: 'phút', def: 4 },
   { key: 'phases', group: 'time', label: 'Tỉ lệ ngày / đêm', type: 'select', def: 'normal',
     options: Object.fromEntries(Object.entries(PHASE_SPLITS).map(([k, v]) => [k, v.name])) },
@@ -40,6 +55,12 @@ export const SETTINGS = [
   { key: 'hounds', group: 'hounds', label: 'Có chó săn tấn công', type: 'bool', def: true },
   { key: 'houndDay', group: 'hounds', needs: 'hounds', label: 'Đợt chó săn đầu tiên vào ngày', type: 'num', min: 2, max: 30, step: 0.5, unit: '', def: 5.5 },
   { key: 'houndCount', group: 'hounds', needs: 'hounds', label: 'Số chó mỗi đợt', type: 'num', min: 0.5, max: 3, step: 0.5, unit: '×', def: 1 },
+
+  { key: 'spiderQueen', group: 'queen', label: 'Có ổ Nhện chúa trong rừng', type: 'bool', def: true },
+  { key: 'queenHp', group: 'queen', needs: 'spiderQueen', label: 'Máu Nhện chúa', type: 'num', min: 0.5, max: 3, step: 0.25, unit: '×', def: 1 },
+  { key: 'queenRespawn', group: 'queen', needs: 'spiderQueen', label: 'Bị hạ thì ổ có Nhện chúa mới sau', type: 'num', min: 1, max: 30, step: 1, unit: 'ngày', def: 6 },
+  { key: 'poison', group: 'queen', needs: 'spiderQueen', label: 'Sức độc khi bị Nhện chúa đánh', type: 'num', min: 0, max: 2, step: 0.25, unit: '×', zero: 'Không độc', def: 1,
+    desc: 'Mặc định mỗi lần trúng độc mất tổng cộng 30 máu trong 8 giây, bỏ qua giáp. Thuốc đắp / Thuốc giải chữa khỏi.' },
 
   { key: 'deerclops', group: 'bosses', label: 'Có boss Deerclops', type: 'bool', def: true },
   { key: 'deerclopsDay', group: 'bosses', needs: 'deerclops', label: 'Deerclops tới lần đầu vào ngày', type: 'num', min: 3, max: 60, step: 1, unit: '', def: 11 },
@@ -69,6 +90,7 @@ export const PRESETS = {
       phases: 'longday', hunger: 0.75, spoil: 0.5, regrow: 1.5, abandonDays: 10, spiders: 0.5, animals: 1.5, nightSpiders: false,
       houndDay: 8, houndCount: 0.5, deerclopsDay: 15, deerclopsHp: 0.75, beargerDay: 25, beargerHp: 0.75,
       bossReturnKilled: 12, bossReturnLeft: 4, bossHpGrowth: 10, bossDmgGrowth: 5, bossMaxLevel: 3,
+      queenHp: 0.75, queenRespawn: 4, poison: 0.5,
     },
   },
   normal: { name: 'Mặc định', icon: '⚖️', values: {} },
@@ -78,6 +100,7 @@ export const PRESETS = {
       phases: 'longnight', hunger: 1.25, spoil: 1.5, regrow: 0.75, abandonDays: 3, spiders: 1.5, animals: 0.5,
       houndDay: 4, houndCount: 1.5, deerclopsDay: 8, deerclopsHp: 1.5, beargerDay: 15, beargerHp: 1.5, together: true,
       bossReturnKilled: 7, bossReturnLeft: 2, bossHpGrowth: 40, bossDmgGrowth: 20, bossMaxLevel: 8,
+      queenHp: 1.5, queenRespawn: 8, poison: 1.5,
     },
   },
 };
