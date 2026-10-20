@@ -1,33 +1,36 @@
 import {
   CHUNK, SPAWN, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
-  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DAY_LEN, DROP_LIFE, BOOMERANG, biomeAt, phaseAt, fireRadius,
+  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, biomeAt, phaseAt, fireRadius,
 } from '../shared/data.js';
+import { sanitizeSettings, clockOf } from '../shared/settings.js';
 
 const SAVE_EVERY_MS = 30000;
 // Dừng đồng hồ thế giới khi không còn ai online (đặt PAUSE_WHEN_EMPTY=0 để tắt)
 const PAUSE_WHEN_EMPTY = process.env.PAUSE_WHEN_EMPTY !== '0';
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
-// Chó săn: đợt đầu vào khoảng ngày 6, sau đó cứ 3–5 ngày một đợt, cứ 5 ngày thêm 1 con (tối đa 5 con mỗi người).
-// Các con tới cách nhau stagger giây. Đợt chó không trùng Deerclops: nếu boss đang ở đây hoặc sắp tới
-// trong vòng bossGap giây thì hoãn thêm postpone ngày.
+// Chó săn: đợt đầu vào ngày cfg.houndDay, sau đó cứ 3–5 ngày một đợt, cứ 5 ngày thêm 1 con (tối đa 5 con mỗi người),
+// rồi nhân với cfg.houndCount. Các con tới cách nhau stagger giây. Nếu không bật cfg.together thì đợt chó không trùng boss:
+// boss đang ở đây hoặc sắp tới trong vòng bossGap giây thì hoãn thêm postpone ngày.
 const HOUND = {
-  firstDay: 5.5, gapMin: 3, gapMax: 5, base: 2, perDays: 5, max: 5, warnAt: [25, 10], spawnDist: 650, stagger: 1.5,
+  gapMin: 3, gapMax: 5, base: 2, perDays: 5, max: 5, warnAt: [25, 10], spawnDist: 650, stagger: 1.5,
   bossGap: 60, postpone: 0.5, spread: 30,
 };
 
-// Boss Deerclops: tới vào đầu ngày 11 (~phút 40). Bị hạ thì 10 ngày sau quay lại; bỏ đi thì 3 ngày sau quay lại.
+// Boss Deerclops: tới vào đầu ngày cfg.deerclopsDay (mặc định 11). Bị hạ thì cfg.bossReturnKilled ngày sau quay lại;
+// bỏ đi thì cfg.bossReturnLeft ngày sau quay lại. Máu nhân với cfg.deerclopsHp (Bearger: cfg.beargerHp).
+// Mỗi lần bị hạ, lần sau boss đó tới với máu +cfg.bossHpGrowth% và sát thương +cfg.bossDmgGrowth% (cộng dồn, tối đa cfg.bossMaxLevel lần).
 // Đòn vồ: gồng windupMs rồi đập xuống vùng tròn slamR quanh chỗ người chơi đứng lúc bắt đầu gồng (chạy ra là né được).
 // Sát thương giảm dần từ slamMax ở tâm xuống slamMin ở rìa. Đứng trong bán kính stunR quanh tâm thì bị choáng stunMs.
 // Lông dày: đánh cận chiến chỉ gây meleeMul sát thương, nên cần boomerang.
 // Công trình nằm trong vùng đập có smashChance bị phá (rơi lại nửa nguyên liệu + đồ bên trong).
 const BOSS = {
-  firstDay: 11, gapDays: 10, returnDays: 3, warnAt: [30, 10], spawnDist: 700,
+  warnAt: [30, 10], spawnDist: 700,
   hp: 1500, hpPerPlayer: 750, hpMax: 4000, meleeMul: 0.5, smashChance: 0.5,
   slamMax: 90, slamMin: 30, slamR: 140, stunR: 50, stunMs: 500, reach: 120, windupMs: 900, recoverMs: 1400, leaveAfter: 45,
 };
 
-// Boss Bearger: tới vào đầu ngày 20 (~phút 76), lịch quay lại giống Deerclops. Đánh cận chiến được bình thường.
+// Boss Bearger: tới vào đầu ngày cfg.beargerDay (mặc định 20), lịch quay lại giống Deerclops. Đánh cận chiến được bình thường.
 // Cào: tới gần thì gồng swipeWindup rồi cào nửa vòng tròn phía trước (bán kính swipeR).
 // Đập đất: cứ slamEvery đòn thì một đòn đập quanh chính nó, giống Deerclops (có choáng, phá công trình).
 // Lao: người chơi ở cách chargeMin–chargeMax thì gồng chargeWindup (vạch đường lao), rồi lao thẳng chargeLen
@@ -35,7 +38,7 @@ const BOSS = {
 // Tham ăn: ngửi thấy đồ ăn trong bán kính smell (đồ rơi dưới đất, rương, giàn phơi) thì bỏ người chơi đi ăn,
 // đứng ăn eatMs rồi xóa sạch đồ ăn ở đó. Bị đánh thì nổi giận, bỏ ăn và chỉ đuổi người trong angryMs.
 const BEARGER = {
-  firstDay: 20, gapDays: 10, returnDays: 3, warnAt: [30, 10], spawnDist: 700,
+  warnAt: [30, 10], spawnDist: 700,
   hp: 3000, hpPerPlayer: 1200, hpMax: 7000, smashChance: 0.6, leaveAfter: 45,
   swipeReach: 100, swipeR: 130, swipeDmg: 45, swipeWindup: 550, swipeRecover: 900,
   slamEvery: 3, slamR: 170, slamMax: 75, slamMin: 30, slamWindup: 1100, slamRecover: 1500, stunR: 70, stunMs: 600,
@@ -43,7 +46,8 @@ const BEARGER = {
   chargeStunMs: 600, chargeCd: 9000, chargeRecover: 1600,
   smell: 500, eatMs: 2500, angryMs: 6000,
 };
-// Lịch và lời báo của từng boss. Mỗi lúc chỉ có một boss trong thế giới.
+// Lịch và lời báo của từng boss. Mỗi lúc chỉ có một boss trong thế giới, trừ khi bật cfg.together.
+// Boss tắt trong thông số (cfg.<boss> = false) thì không bao giờ tới.
 const BOSS_TYPES = {
   deerclops: {
     cfg: BOSS, killed: 'Nhặt Mắt Deerclops để chế đồ mới.',
@@ -57,6 +61,9 @@ const BOSS_TYPES = {
 const BOSS_BUSY_DELAY = 0.5; // tới lịch mà boss khác đang ở đây thì lùi lại chừng này ngày
 const ICEBOX_RATE = 0.5; // đồ trong Hộp Đá Lạnh cũ đi bằng chừng này so với bình thường
 const CONTAINERS = new Set(['chest', 'icebox']);
+// Công trình bỏ hoang: không có người chơi nào trong bán kính này suốt cfg.abandonDays ngày (giờ thế giới) thì mục nát,
+// rơi lại một nửa nguyên liệu và đồ bên trong như khi bị đập bằng búa. cfg.abandonDays = 0 thì không bao giờ mục.
+const ABANDON_RANGE = 700;
 
 const VIEW_CHUNKS = 1; // gửi các chunk trong bán kính 1 quanh người chơi (lưới 3x3)
 const KEEP_CHUNKS = 2; // chỉ bỏ chunk khi đã ra xa hơn bán kính này (tránh gửi đi gửi lại)
@@ -64,7 +71,7 @@ const MOB_VIEW = 1600; // chỉ gửi quái trong khoảng cách này
 const MOB_DESPAWN = 2600; // quái ở quá xa mọi người chơi sẽ bị xóa
 
 const TICK_MS = 50;
-const HUNGER_RATE = MAX_HUNGER / 480; // no -> đói trong khoảng 8 phút
+const HUNGER_RATE = MAX_HUNGER / 480; // no -> đói trong khoảng 8 phút (nhân với cfg.hunger)
 const RESPAWN_MS = 12000;
 const RESPAWN_SAFE_MS = 25000; // vừa hồi sinh thì bóng tối chưa tấn công được trong chừng này thời gian
 const COLORS = [0xe05d5d, 0x5d9be0, 0x6fd06f, 0xe0c35d, 0xb86fe0, 0xe08f5d, 0x5de0d0, 0xe05db3];
@@ -133,7 +140,7 @@ const ENTS_PER_CHUNK = 115;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const pub = ({ regrowAt, life, ...rest }) => rest;
+const pub = ({ regrowAt, life, idle, ...rest }) => rest;
 const emptyGear = () => ({ hand: null, head: null, body: null });
 // Dữ liệu riêng của món đồ cần giữ khi chuyển chỗ (đồ trong ba lô).
 // Phần "đi kèm" của một món khi chuyển chỗ: đồ trong ba lô, và độ cũ của đồ tươi.
@@ -198,8 +205,12 @@ function addToSlots(slots, id, count, dur, extra) {
 // Một thế giới (server game). Có thể chạy nhiều thế giới cùng lúc trong một tiến trình Node;
 // mỗi thế giới dùng kênh socket riêng "w:<id>" và tự lưu qua hàm persist do WorldManager cung cấp.
 export class Game {
-  constructor(io, { id, name, data, persist }) {
+  constructor(io, { id, name, data, persist, settings }) {
     this.io = io;
+    // Thông số thế giới chọn lúc tạo server (xem shared/settings.js). Các mốc tính bằng "ngày" đều theo dayLen của thế giới này.
+    this.cfg = sanitizeSettings(settings);
+    this.clock = clockOf(this.cfg);
+    this.dayLen = this.clock.len;
     this.worldId = id;
     this.name = name;
     this.room = `w:${id}`;
@@ -216,11 +227,13 @@ export class Game {
     this.seed = Number(process.env.SEED) || Math.floor(Math.random() * 2 ** 31);
     this.chunks = new Map(); // "cx,cy" -> Set các vật thể trong chunk
     this.saves = new Map(); // mã bí mật của người chơi -> nhân vật đã lưu
-    this.nextHound = HOUND.firstDay * DAY_LEN;
+    this.nextHound = this.cfg.houndDay * this.dayLen;
     this.houndWarned = 0;
     this.houndQueue = [];
-    this.bossAt = Object.fromEntries(Object.entries(BOSS_TYPES).map(([type, b]) => [type, (b.cfg.firstDay - 1) * DAY_LEN]));
+    this.bossAt = Object.fromEntries(Object.keys(BOSS_TYPES).map((type) => [type, (this.cfg[`${type}Day`] - 1) * this.dayLen]));
     this.bossWarned = Object.fromEntries(Object.keys(BOSS_TYPES).map((type) => [type, 0]));
+    // Số lần mỗi boss đã bị hạ: lần sau nó tới mạnh hơn (bossLevel).
+    this.bossKills = Object.fromEntries(Object.keys(BOSS_TYPES).map((type) => [type, 0]));
     this.booms = new Map(); // boomerang đang bay
 
     if (data) this.restore(data);
@@ -234,7 +247,7 @@ export class Game {
     ];
   }
 
-  get day() { return Math.floor(this.t / DAY_LEN) + 1; }
+  get day() { return Math.floor(this.t / this.dayLen) + 1; }
 
   // Lưu và dừng vòng lặp (khi gỡ thế giới khỏi bộ nhớ hoặc tắt server).
   stop() {
@@ -263,7 +276,7 @@ export class Game {
     try {
       this.persist({
         version: 1, seed: this.seed, t: this.t, nextId: this.nextId, nextHound: this.nextHound,
-        nextBoss: this.bossAt.deerclops, nextBearger: this.bossAt.bearger,
+        nextBoss: this.bossAt.deerclops, nextBearger: this.bossAt.bearger, bossKills: this.bossKills,
         respawnQueue: this.respawnQueue, chunks: [...this.chunks.keys()],
         ents: [...this.ents.values()], players: Object.fromEntries(this.saves),
       }, this.day);
@@ -280,7 +293,8 @@ export class Game {
     // Thế giới cũ (trước khi có boss) đã qua ngày 11 thì cho boss tới sau 1 phút, có báo trước.
     this.bossAt.deerclops = data.nextBoss ?? Math.max(this.bossAt.deerclops, this.t + 60);
     // Thế giới cũ (trước khi có Bearger) đã qua ngày 20 thì cho Bearger tới sau 1 ngày.
-    this.bossAt.bearger = data.nextBearger ?? Math.max(this.bossAt.bearger, this.t + DAY_LEN);
+    this.bossAt.bearger = data.nextBearger ?? Math.max(this.bossAt.bearger, this.t + this.dayLen);
+    Object.assign(this.bossKills, data.bossKills);
     this.respawnQueue = data.respawnQueue ?? [];
     for (const key of data.chunks) this.chunks.set(key, new Set());
     for (const e of data.ents) {
@@ -376,10 +390,10 @@ export class Game {
     this.emitChunk(e, 'ent:del', e.id);
   }
 
-  // Tài nguyên bị lấy đi sẽ mọc lại đúng chỗ cũ.
+  // Tài nguyên bị lấy đi sẽ mọc lại đúng chỗ cũ (nhanh / chậm theo cfg.regrow).
   queueRespawn(e) {
     const r = RESOURCE[e.type];
-    if (r?.respawn) this.respawnQueue.push({ type: e.type, x: e.x, y: e.y, at: this.t + r.respawn });
+    if (r?.respawn) this.respawnQueue.push({ type: e.type, x: e.x, y: e.y, at: this.t + r.respawn / this.cfg.regrow });
   }
 
   // Đồ tạm (đuốc tặng lúc hồi sinh) không bao giờ nằm lại trên đất: chết hay vứt đi là mất luôn.
@@ -486,7 +500,7 @@ export class Game {
     this.players.set(p.id, p);
     socket.join(this.room);
     socket.emit('init', {
-      you: p.id, x: p.x, y: p.y, t: this.t, seed: this.seed, players: this.roster(), serverName: this.name,
+      you: p.id, x: p.x, y: p.y, t: this.t, seed: this.seed, players: this.roster(), serverName: this.name, settings: this.cfg,
     });
     this.sendInv(p);
     this.sendStats(p);
@@ -517,7 +531,7 @@ export class Game {
 
   roster() {
     return [...this.players.values()].map((p) => ({
-      id: p.id, name: p.name, color: p.color, days: Math.floor(p.survived / DAY_LEN),
+      id: p.id, name: p.name, color: p.color, days: Math.floor(p.survived / this.dayLen),
     }));
   }
 
@@ -634,7 +648,7 @@ export class Game {
     for (const m of this.mobs.values()) if (m.target === p.id) m.target = null;
     this.sendInv(p);
     this.sendStats(p);
-    const days = Math.floor(p.survived / DAY_LEN);
+    const days = Math.floor(p.survived / this.dayLen);
     p.survived = 0;
     p.socket.emit('died', { cause, respawn: RESPAWN_MS / 1000, days });
     this.system(`☠ ${p.name} đã chết vì ${cause} sau ${days} ngày sống sót.`);
@@ -653,7 +667,7 @@ export class Game {
     p.warned = false;
     // Không bị bóng tối tấn công một lúc; hồi sinh lúc chạng vạng / ban đêm thì được cầm sẵn một cây đuốc.
     p.safeUntil = Date.now() + RESPAWN_SAFE_MS;
-    if (phaseAt(this.t) !== 'day') {
+    if (phaseAt(this.t, this.clock) !== 'day') {
       p.gear.hand = { id: 'torch', count: 1, dur: ITEMS.torch.uses, temp: true }; // đuốc tạm: không rơi ra, không cất được
       this.sendInv(p);
       this.say(p, 'Trời tối rồi... may mà có cây đuốc.');
@@ -766,7 +780,7 @@ export class Game {
         this.queueRespawn(e);
       } else {
         e.ready = false;
-        e.regrowAt = this.t + r.regrow;
+        e.regrowAt = this.t + r.regrow / this.cfg.regrow;
         this.updEnt(e);
       }
     }
@@ -812,7 +826,7 @@ export class Game {
   // ---------- Ngủ trong lều ----------
 
   sleepIn(p, tent) {
-    if (phaseAt(this.t) === 'day') return this.fail(p, 'Trời còn sáng, chưa buồn ngủ.');
+    if (phaseAt(this.t, this.clock) === 'day') return this.fail(p, 'Trời còn sáng, chưa buồn ngủ.');
     if (p.hunger < SLEEP.minHunger) return this.fail(p, 'Đói quá, không ngủ nổi.');
     for (const m of this.mobs.values()) {
       const def = MOBS[m.type];
@@ -903,10 +917,12 @@ export class Game {
     }
     if (def.boss) {
       const b = BOSS_TYPES[m.type];
-      this.bossAt[m.type] = this.t + b.cfg.gapDays * DAY_LEN;
+      this.bossAt[m.type] = this.t + this.cfg.bossReturnKilled * this.dayLen;
       this.bossWarned[m.type] = 0;
+      const before = this.bossLevel(m.type);
+      this.bossKills[m.type]++;
       this.emit('warn', { text: `${p.name} đã hạ gục ${def.name}! ${b.killed}`, big: true });
-      this.system(`🏆 ${p.name} đã hạ gục ${def.name}!`);
+      this.system(`🏆 ${p.name} đã hạ gục ${def.name}!${this.bossLevel(m.type) > before ? ` Lần sau nó sẽ quay lại mạnh hơn.` : ''}`);
     }
     return true;
   }
@@ -1009,6 +1025,11 @@ export class Game {
         if (i >= 0) p.inv[i] = old;
         else this.spawnDrop(p.x + rand(-10, 10), p.y + 16, old);
       }
+      // Lần đầu cầm công cụ có cách dùng riêng (xẻng, búa) trong phiên chơi thì nhân vật tự nhắc.
+      if (def.hint && !p.hinted?.has(it.id)) {
+        (p.hinted ??= new Set()).add(it.id);
+        this.say(p, def.hint);
+      }
       return this.sendInv(p);
     }
 
@@ -1017,7 +1038,7 @@ export class Game {
       if (!spot) return this.fail(p, 'Không đủ chỗ trống để trồng ở đây.');
       this.consumeSlot(p, slot);
       const r = RESOURCE[def.plant];
-      this.addEnt(def.plant, spot.x, spot.y, { ready: false, regrowAt: this.t + r.regrow });
+      this.addEnt(def.plant, spot.x, spot.y, { ready: false, regrowAt: this.t + r.regrow / this.cfg.regrow });
       this.emit('fx', { k: 'pick', by: p.id });
       return this.sendInv(p);
     }
@@ -1178,7 +1199,7 @@ export class Game {
     if (process.env.DEV === '1' && bossCmd) {
       const type = bossCmd[1]?.toLowerCase() ?? 'deerclops';
       if (!BOSS_TYPES[type]) return this.fail(p, `Không có boss "${type}". Có: ${Object.keys(BOSS_TYPES).join(', ')}.`);
-      if ([...this.mobs.values()].some((m) => m.type === type)) return this.fail(p, `${MOBS[type].name} đang ở đây rồi.`);
+      if (this.boss(type)) return this.fail(p, `${MOBS[type].name} đang ở đây rồi.`);
       this.bossAt[type] = this.t + 12;
       this.bossWarned[type] = 0;
       this.bossForced = type; // không bị lùi lịch dù boss khác đang ở đây
@@ -1201,7 +1222,7 @@ export class Game {
     if (PAUSE_WHEN_EMPTY && this.players.size === 0) return;
     this.t += dt;
     this.tickCount++;
-    const phase = phaseAt(this.t);
+    const phase = phaseAt(this.t, this.clock);
 
     for (const p of this.players.values()) this.updatePlayer(p, dt, now, phase);
     for (const f of [...this.fires]) {
@@ -1223,9 +1244,9 @@ export class Game {
       ps.push([p.id, Math.round(p.x), Math.round(p.y), p.dead ? 1 : 0, p.gear.hand?.id || 0, p.gear.head?.id || 0, p.gear.body?.id || 0, p.sleep ? 1 : 0, now < p.safeUntil ? 1 : 0, now < p.stunUntil ? 1 : 0]);
     }
     const t = Math.round(this.t * 100) / 100;
-    const boss = this.boss();
     for (const p of this.players.values()) {
       const near = (o) => Math.abs(o.x - p.x) < MOB_VIEW && Math.abs(o.y - p.y) < MOB_VIEW;
+      const boss = this.nearestBoss(p);
       const ms = [];
       for (const m of this.mobs.values()) if (near(m)) ms.push([m.id, m.type, Math.round(m.x), Math.round(m.y)]);
       const bs = [];
@@ -1245,7 +1266,7 @@ export class Game {
     }
 
     p.survived += dt;
-    p.hunger = Math.max(0, p.hunger - HUNGER_RATE * dt);
+    p.hunger = Math.max(0, p.hunger - HUNGER_RATE * this.cfg.hunger * dt);
     if (p.hunger <= 0) this.hurt(p, 1.5 * dt, 'đói', { quiet: true });
 
     // Ngủ trong lều: an toàn trong bóng tối, hồi máu và tinh thần, đói nhanh hơn. Trời sáng thì tự dậy.
@@ -1355,29 +1376,8 @@ export class Game {
 
   // Báo trước rồi thả một đàn chó săn nhắm vào từng người chơi đang sống.
   updateHounds() {
-    // Chưa báo trước mà Deerclops đang ở đây hoặc sắp tới thì hoãn đợt chó, không cho hai thứ trùng nhau.
-    if (!this.houndWarned && !this.houndForced && this.nextHound - this.t <= HOUND.warnAt[0]
-      && (this.boss() || Object.values(this.bossAt).some((at) => Math.abs(at - this.nextHound) < HOUND.bossGap))) {
-      this.nextHound = this.t + HOUND.warnAt[0] + HOUND.postpone * DAY_LEN;
-    }
-    const left = this.nextHound - this.t;
-    for (let i = this.houndWarned; i < HOUND.warnAt.length; i++) {
-      if (left > HOUND.warnAt[i]) break;
-      this.houndWarned = i + 1;
-      this.emit('warn', { text: i === 0 ? 'Có tiếng gầm gừ từ xa... Chó săn sắp tới!' : 'Tiếng gầm gừ ngày càng gần! Chuẩn bị chiến đấu!' });
-    }
-    if (left <= 0) {
-      const day = Math.floor(this.t / DAY_LEN) + 1;
-      const count = Math.min(HOUND.max, HOUND.base + Math.floor((day - 1) / HOUND.perDays));
-      for (const p of this.players.values()) {
-        if (p.dead || !p.ready) continue;
-        for (let i = 0; i < count; i++) this.houndQueue.push({ at: this.t + i * HOUND.stagger, target: p.id });
-      }
-      if (this.houndQueue.length) this.emit('warn', { text: `Chó săn tấn công! (${count} con mỗi người)`, big: true });
-      this.nextHound = this.t + rand(HOUND.gapMin, HOUND.gapMax) * DAY_LEN;
-      this.houndWarned = 0;
-      this.houndForced = false;
-    }
+    // Thế giới tắt chó săn: chỉ còn đợt gọi bằng lệnh /hounds.
+    if (this.cfg.hounds || this.houndForced) this.scheduleHounds();
     this.houndQueue = this.houndQueue.filter((q) => {
       if (this.t < q.at) return true;
       const p = this.players.get(q.target);
@@ -1388,23 +1388,74 @@ export class Game {
     });
   }
 
-  boss() {
-    for (const m of this.mobs.values()) if (MOBS[m.type].boss) return m;
+  scheduleHounds() {
+    // Chưa báo trước mà boss đang ở đây hoặc sắp tới thì hoãn đợt chó, không cho hai thứ trùng nhau (trừ khi bật cfg.together).
+    if (!this.cfg.together && !this.houndWarned && !this.houndForced && this.nextHound - this.t <= HOUND.warnAt[0]
+      && (this.boss() || this.activeBossTypes().some((type) => Math.abs(this.bossAt[type] - this.nextHound) < HOUND.bossGap))) {
+      this.nextHound = this.t + HOUND.warnAt[0] + HOUND.postpone * this.dayLen;
+    }
+    const left = this.nextHound - this.t;
+    for (let i = this.houndWarned; i < HOUND.warnAt.length; i++) {
+      if (left > HOUND.warnAt[i]) break;
+      this.houndWarned = i + 1;
+      this.emit('warn', { text: i === 0 ? 'Có tiếng gầm gừ từ xa... Chó săn sắp tới!' : 'Tiếng gầm gừ ngày càng gần! Chuẩn bị chiến đấu!' });
+    }
+    if (left <= 0) {
+      const day = Math.floor(this.t / this.dayLen) + 1;
+      const base = Math.min(HOUND.max, HOUND.base + Math.floor((day - 1) / HOUND.perDays));
+      const count = Math.max(1, Math.round(base * this.cfg.houndCount));
+      for (const p of this.players.values()) {
+        if (p.dead || !p.ready) continue;
+        for (let i = 0; i < count; i++) this.houndQueue.push({ at: this.t + i * HOUND.stagger, target: p.id });
+      }
+      if (this.houndQueue.length) this.emit('warn', { text: `Chó săn tấn công! (${count} con mỗi người)`, big: true });
+      this.nextHound = this.t + rand(HOUND.gapMin, HOUND.gapMax) * this.dayLen;
+      this.houndWarned = 0;
+      this.houndForced = false;
+    }
+  }
+
+  // Một boss bất kỳ đang ở trong thế giới (hoặc boss loại type).
+  boss(type) {
+    for (const m of this.mobs.values()) if (MOBS[m.type].boss && (!type || m.type === type)) return m;
     return null;
   }
 
+  // Boss gần người chơi nhất (cho thanh máu boss khi có nhiều boss cùng lúc).
+  nearestBoss(p) {
+    let best = null, bd = Infinity;
+    for (const m of this.mobs.values()) {
+      if (!MOBS[m.type].boss) continue;
+      const d = dist(m, p);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  // Cấp mạnh lên của boss: số lần đã bị hạ, tối đa cfg.bossMaxLevel. Cấp 0 khi không bật tăng máu / sát thương.
+  bossLevel(type) {
+    if (!this.cfg.bossHpGrowth && !this.cfg.bossDmgGrowth) return 0;
+    return Math.min(this.bossKills[type], this.cfg.bossMaxLevel);
+  }
+
+  // Các boss được bật trong thông số thế giới (boss gọi bằng lệnh /boss thì luôn được tới).
+  activeBossTypes() {
+    return Object.keys(BOSS_TYPES).filter((type) => this.cfg[type] || this.bossForced === type);
+  }
+
   // Báo trước rồi thả từng boss theo lịch, nhắm vào một người chơi ngẫu nhiên đang sống.
-  // Mỗi lúc chỉ một boss: tới lịch mà boss khác đang ở đây thì lùi lại (trừ khi gọi bằng lệnh /boss).
+  // Mỗi lúc chỉ một boss: tới lịch mà boss khác đang ở đây thì lùi lại (trừ khi bật cfg.together hoặc gọi bằng lệnh /boss).
   updateBossSchedule() {
     const here = this.boss();
-    for (const [type, { cfg, warn }] of Object.entries(BOSS_TYPES)) {
-      if (here?.type === type) continue;
+    for (const type of this.activeBossTypes()) {
+      const { cfg, warn } = BOSS_TYPES[type];
+      if (this.boss(type)) continue;
       const left = this.bossAt[type] - this.t;
-      if (here && this.bossForced !== type) {
+      if (here && !this.cfg.together && this.bossForced !== type) {
         if (left <= cfg.warnAt[0]) {
           // Đã báo "sắp tới" mà phải lùi lịch thì báo lại cho người chơi khỏi chờ.
           if (this.bossWarned[type]) this.emit('warn', { text: `${MOBS[type].name} đã quay đầu bỏ đi... nhưng nó sẽ quay lại.` });
-          this.bossAt[type] = this.t + cfg.warnAt[0] + BOSS_BUSY_DELAY * DAY_LEN;
+          this.bossAt[type] = this.t + cfg.warnAt[0] + BOSS_BUSY_DELAY * this.dayLen;
           this.bossWarned[type] = 0;
         }
         continue;
@@ -1419,13 +1470,18 @@ export class Game {
       if (!alive.length) continue;
       const p = alive[Math.floor(Math.random() * alive.length)];
       const a = rand(0, Math.PI * 2);
-      const hp = Math.min(cfg.hpMax, cfg.hp + cfg.hpPerPlayer * (alive.length - 1));
+      // Máu: theo số người đang chơi (có trần hpMax), nhân hệ số máu của thế giới, rồi cộng phần mạnh lên sau mỗi lần bị hạ.
+      // Sát thương của mọi đòn nhân với dmgMul.
+      const level = this.bossLevel(type);
+      const grow = (pct) => 1 + (pct / 100) * level;
+      const hp = Math.round(Math.min(cfg.hpMax, cfg.hp + cfg.hpPerPlayer * (alive.length - 1)) * this.cfg[`${type}Hp`] * grow(this.cfg.bossHpGrowth));
       this.spawnMob(type, p.x + Math.cos(a) * cfg.spawnDist, p.y + Math.sin(a) * cfg.spawnDist, {
-        hp, maxHp: hp, target: p.id, idle: 0, slam: null, act: null,
+        hp, maxHp: hp, target: p.id, idle: 0, slam: null, act: null, dmgMul: grow(this.cfg.bossDmgGrowth),
       });
-      this.emit('warn', { text: `${MOBS[type].name} đã xuất hiện! (${hp} máu)`, big: true });
+      const stronger = level ? ` — mạnh hơn lần đầu (cấp ${level}${level >= this.cfg.bossMaxLevel ? ', tối đa' : ''})` : '';
+      this.emit('warn', { text: `${MOBS[type].name} đã xuất hiện! (${hp} máu)${stronger}`, big: true });
       // Mặc định là bỏ đi rồi quay lại; nếu bị hạ thì damageMob sẽ dời lịch xa hơn.
-      this.bossAt[type] = this.t + cfg.returnDays * DAY_LEN;
+      this.bossAt[type] = this.t + this.cfg.bossReturnLeft * this.dayLen;
       this.bossWarned[type] = 0;
       if (this.bossForced === type) this.bossForced = null;
       return;
@@ -1454,7 +1510,7 @@ export class Game {
       for (const p of this.players.values()) {
         const d = Math.hypot(p.x - m.slam.x, p.y - m.slam.y);
         if (!this.bossCanHit(p, now) || d >= BOSS.slamR) continue;
-        const dmg = BOSS.slamMax - (BOSS.slamMax - BOSS.slamMin) * (d / BOSS.slamR);
+        const dmg = (BOSS.slamMax - (BOSS.slamMax - BOSS.slamMin) * (d / BOSS.slamR)) * (m.dmgMul ?? 1);
         this.hurt(p, Math.round(dmg), def.name, { armored: true });
         if (!p.dead && d < BOSS.stunR) {
           p.stunUntil = now + BOSS.stunMs;
@@ -1540,10 +1596,10 @@ export class Game {
   // trừ khi người đó tự đánh boss: khi ấy mất bảo vệ trước boss (vẫn giữ bảo vệ trước bóng tối).
   bossCanHit(p, now) { return !p.dead && (now >= p.safeUntil || p.bossSafeLost === p.safeUntil); }
 
-  // Trúng người chơi: trừ máu (qua giáp) và có thể làm choáng.
-  bossHit(p, dmg, name, now, stunMs) {
+  // Boss m đánh trúng người chơi: trừ máu (qua giáp, nhân hệ số mạnh lên của boss) và có thể làm choáng.
+  bossHit(p, m, dmg, now, stunMs) {
     if (!this.bossCanHit(p, now)) return;
-    this.hurt(p, Math.round(dmg), name, { armored: true });
+    this.hurt(p, Math.round(dmg * (m.dmgMul ?? 1)), MOBS[m.type].name, { armored: true });
     if (!p.dead && stunMs) {
       p.stunUntil = now + stunMs;
       this.emit('fx', { k: 'stun', id: p.id, ms: stunMs });
@@ -1576,7 +1632,7 @@ export class Game {
       for (const p of this.players.values()) {
         if (p.dead || a.hit.has(p.id) || dist(p, m) >= B.chargeW) continue;
         a.hit.add(p.id);
-        this.bossHit(p, B.chargeDmg, def.name, now, B.chargeStunMs);
+        this.bossHit(p, m, B.chargeDmg, now, B.chargeStunMs);
       }
       const smashed = [];
       for (const e of this.entsNear(m.x, m.y, B.chargeW)) {
@@ -1602,7 +1658,7 @@ export class Game {
         for (const p of this.players.values()) {
           const dx = p.x - m.x, dy = p.y - m.y, d = Math.hypot(dx, dy);
           if (p.dead || d >= B.swipeR || dx * a.dx + dy * a.dy < -20) continue; // chỉ nửa phía trước
-          this.bossHit(p, B.swipeDmg, def.name, now);
+          this.bossHit(p, m, B.swipeDmg, now);
         }
         this.emit('fx', { k: 'swipe', id: m.id });
         m.atk = now + B.swipeRecover;
@@ -1610,7 +1666,7 @@ export class Game {
         for (const p of this.players.values()) {
           const d = Math.hypot(p.x - a.x, p.y - a.y);
           if (p.dead || d >= B.slamR) continue;
-          this.bossHit(p, B.slamMax - (B.slamMax - B.slamMin) * (d / B.slamR), def.name, now, d < B.stunR ? B.stunMs : 0);
+          this.bossHit(p, m, B.slamMax - (B.slamMax - B.slamMin) * (d / B.slamR), now, d < B.stunR ? B.stunMs : 0);
         }
         this.emit('fx', { k: 'slam', id: m.id, x: Math.round(a.x), y: Math.round(a.y), r: B.slamR });
         this.smashAround(a.x, a.y, B.slamR, B.smashChance, def.name);
@@ -1782,28 +1838,44 @@ export class Game {
     this.wander(m, def, dt, now, goal);
   }
 
-  // Mỗi giây: đồ vứt ngoài đất tự biến mất sau DROP_LIFE; thức ăn tươi (trong túi, rương, ngoài đất) cũ dần.
+  // Mỗi giây: đồ vứt ngoài đất tự biến mất sau DROP_LIFE; thức ăn tươi (trong túi, rương, ngoài đất) cũ dần theo cfg.spoil.
   updateDecay() {
-    const sync = this.slowCount % 5 === 0; // gửi lại túi/rương định kỳ để thanh độ tươi chạy
+    const spoil = this.cfg.spoil;
+    const sync = spoil > 0 && this.slowCount % 5 === 0; // gửi lại túi/rương định kỳ để thanh độ tươi chạy
     for (const e of [...this.ents.values()]) {
       if (e.type === 'drop') {
         e.life = (e.life ?? 0) + 1;
         if (e.life >= DROP_LIFE) { this.removeEnt(e); continue; }
-        const r = ageItem(e.item, 1);
+        const r = ageItem(e.item, spoil);
         if (r === 'gone') this.removeEnt(e);
         else if (r === 'rot') this.updEnt(e);
-      } else if (CONTAINERS.has(e.type) && e.slots) {
-        if (ageSlots(e.slots, e.type === 'icebox' ? ICEBOX_RATE : 1) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
+        continue;
       }
+      if (CONTAINERS.has(e.type) && e.slots) {
+        if (ageSlots(e.slots, (e.type === 'icebox' ? ICEBOX_RATE : 1) * spoil) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
+      }
+      if (STRUCTURES.has(e.type) && this.cfg.abandonDays > 0) this.updateAbandon(e);
     }
     for (const p of this.players.values()) {
-      if (ageSlots(p.inv, 1) || (sync && p.inv.some((it) => it && ITEMS[it.id].perish))) this.sendInv(p);
+      if (ageSlots(p.inv, spoil) || (sync && p.inv.some((it) => it && ITEMS[it.id].perish))) this.sendInv(p);
     }
+  }
+
+  // Có người chơi ở gần thì công trình được giữ gìn; bỏ hoang đủ lâu thì mục nát.
+  updateAbandon(e) {
+    for (const p of this.players.values()) {
+      if (!p.dead && dist(p, e) < ABANDON_RANGE) { e.idle = 0; return; }
+    }
+    e.idle = (e.idle ?? 0) + 1;
+    if (e.idle < this.cfg.abandonDays * this.dayLen) return;
+    const name = RECIPES.find((r) => r.id === e.type)?.name ?? e.type;
+    this.system(`🏚️ ${name} bị bỏ hoang quá lâu nên đã mục nát.`);
+    this.demolish(e);
   }
 
   slowTick() {
     if (PAUSE_WHEN_EMPTY && this.players.size === 0) return;
-    const phase = phaseAt(this.t);
+    const phase = phaseAt(this.t, this.clock);
     this.updateHounds();
     this.updateBossSchedule();
     this.slowCount = (this.slowCount ?? 0) + 1;
@@ -1840,13 +1912,14 @@ export class Game {
       if (!near) this.mobs.delete(m.id);
     }
 
-    // Quanh mỗi người chơi luôn có vài con nhện trong rừng và thỏ ở đồng cỏ.
+    // Quanh mỗi người chơi luôn có vài con nhện trong rừng và thỏ ở đồng cỏ (số lượng nhân với cfg.spiders / cfg.animals).
     for (const p of this.players.values()) {
       if (p.dead || !p.ready) continue;
       for (const [type, def] of Object.entries(MOBS)) {
+        const want = Math.round(def.perPlayer * (def.hostile ? this.cfg.spiders : this.cfg.animals));
         let count = 0;
         for (const m of this.mobs.values()) if (m.type === type && m.resident && dist(m, p) < 1500) count++;
-        if (count >= def.perPlayer) continue;
+        if (count >= want) continue;
         for (let i = 0; i < 10; i++) {
           const a = rand(0, Math.PI * 2), r = rand(800, 1300);
           const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
@@ -1860,7 +1933,7 @@ export class Game {
     }
 
     // Ban đêm nhện kéo tới gần người chơi.
-    if (phase === 'night') {
+    if (phase === 'night' && this.cfg.nightSpiders) {
       for (const p of this.players.values()) {
         if (p.dead || Math.random() > 0.12 || this.mobs.size >= 60) continue;
         let near = 0;

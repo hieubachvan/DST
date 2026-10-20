@@ -54,12 +54,15 @@ Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=
 
 **Trên điện thoại / máy tính bảng** (tự nhận ra khi chạm vào màn hình): chạm vào mặt đất để đi, chạm vào vật / quái để tương tác. Muốn có cần điều khiển và nút giữ ✋ thu thập, ⚔️ tấn công thì bấm nút 🕹️. Chạm vào ô đồ để dùng, giữ lâu để mở menu nướng / phơi / vứt. Các nút 🛠️ 💬 ❓ ⛶ ở góc trái trên mở bảng chế tạo, chat, hướng dẫn, toàn màn hình. Thử giao diện điện thoại trên máy tính bằng cách thêm `?touch=1` vào địa chỉ. Điện thoại cùng mạng wifi vào bằng `http://<IP-máy-tính>:5173` (bản dev) hoặc `:3000`.
 
-Một ngày dài 4 phút. Ban đêm, nếu đứng ngoài vùng sáng của lửa trại hoặc đuốc, bạn sẽ bị bóng tối tấn công. Chết thì rơi toàn bộ đồ, thành hồn ma và hồi sinh sau 12 giây.
+**Búa** (không cần Máy Khoa Học) đập bỏ công trình, lấy lại một nửa nguyên liệu. Công trình không có ai tới gần trong nhiều ngày (mặc định 5) sẽ tự mục nát. Bảng **Hướng dẫn** mở được cả ở màn hình chờ, có ô tìm kiếm (gõ không dấu cũng được) và lọc theo nhóm.
+
+Mặc định một ngày dài 4 phút (mỗi server có thể khác, xem *Thông số thế giới*). Ban đêm, nếu đứng ngoài vùng sáng của lửa trại hoặc đuốc, bạn sẽ bị bóng tối tấn công. Chết thì rơi toàn bộ đồ, thành hồn ma và hồi sinh sau 12 giây.
 
 ## Cấu trúc thư mục
 
 ```
 shared/data.js        vật phẩm, công thức, hằng số, ngày–đêm, vùng đất
+shared/settings.js    thông số thế giới chọn lúc tạo server, 3 gói Dễ / Mặc định / Khó
 server/index.js       HTTP + Socket.IO, API admin, nhận lệnh từ client
 server/db.js          SQLite, hash mật khẩu, tài khoản admin
 server/worlds.js      quản lý nhiều server: tạo/xóa, passcode, nạp/gỡ thế giới
@@ -123,6 +126,12 @@ Quy ước tên sprite xuất ra: chữ thường nối bằng `_`. Vật phẩm
 - Server không ai chơi quá 1 phút sẽ được lưu và gỡ khỏi bộ nhớ, có người vào thì nạp lại. Khi không ai online, thời gian của server đó tạm dừng.
 - Nhân vật gắn với **mã bí mật** do trình duyệt tạo và lưu trong máy, không gắn với tên, và tách riêng theo từng server. Vào lại từ cùng trình duyệt là còn nguyên đồ và vị trí. Mở cùng nhân vật ở tab thứ hai thì tab cũ bị đẩy ra.
 - Nếu có file `data/world.json` từ phiên bản trước, lần chạy đầu sẽ tự chuyển thành server **"Thế giới đầu tiên"**, passcode `1234` (đổi bằng biến `DEFAULT_PASSCODE` trước khi chạy, hoặc đổi trong bảng quản trị).
+
+### Thông số thế giới
+
+Khi tạo server, admin mở mục **⚙️ Thông số thế giới** để chọn gói **Dễ / Mặc định / Khó**, rồi chỉnh tiếp từng ô nếu muốn: độ dài ngày và tỉ lệ ngày/đêm, tốc độ đói, đồ ăn hư, tài nguyên mọc lại, công trình bỏ hoang, số nhện và thú, chó săn (bật/tắt, ngày đầu, số lượng), từng boss (bật/tắt, ngày đầu, máu), lịch boss quay lại, mức boss mạnh lên sau mỗi lần bị hạ, và boss với chó săn có được ra cùng lúc không. Không mở mục này thì server dùng gói Mặc định.
+
+Thông số **chỉ đặt được lúc tạo**, sau đó admin chỉ xem được (nút *Xem* trong bảng quản trị). Người chơi thấy tên gói trên thẻ server và toàn bộ thông số trong bảng Hướng dẫn khi đã vào game. Server tạo trước khi có tính năng này dùng gói Mặc định. Thêm thông số mới: thêm một dòng vào `SETTINGS` trong `shared/settings.js` rồi đọc `this.cfg.<tên>` trong `server/game.js`.
 
 **Khi deploy:** server phải có ổ đĩa lưu lâu dài, nếu không mỗi lần deploy lại là mất hết server. Render gói miễn phí **không** giữ file; cần thêm Persistent Disk (gói trả phí) và trỏ `DATA_DIR` vào đó. Với Docker: `docker run -v ds-data:/app/data -e ADMIN_PASSWORD=... -p 3000:3000 dont-starve-web`.
 

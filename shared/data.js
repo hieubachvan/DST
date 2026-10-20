@@ -98,8 +98,9 @@ export const ITEMS = {
   pickaxe: { name: 'Cuốc chim', icon: '⛏️', stack: 1, slot: 'hand', tool: 'mine', damage: 27, uses: 33 },
   goldenaxe: { name: 'Rìu vàng', icon: '🪓', stack: 1, slot: 'hand', tool: 'chop', damage: 27, uses: 400 },
   goldenpickaxe: { name: 'Cuốc vàng', icon: '⛏️', stack: 1, slot: 'hand', tool: 'mine', damage: 27, uses: 132 },
-  shovel: { name: 'Xẻng', icon: '🪏', stack: 1, slot: 'hand', tool: 'dig', damage: 17, uses: 25 },
-  hammer: { name: 'Búa', icon: '🔨', stack: 1, slot: 'hand', tool: 'hammer', damage: 17, uses: 75 },
+  // "hint": cách dùng riêng của công cụ, nhân vật tự nhắc khi cầm lần đầu và hiện trong chú thích món đồ.
+  shovel: { name: 'Xẻng', icon: '🪏', stack: 1, slot: 'hand', tool: 'dig', damage: 17, uses: 25, hint: 'Bấm vào bụi cỏ, cây non, bụi quả mọng để đào lên, rồi bấm cây trong túi để trồng.' },
+  hammer: { name: 'Búa', icon: '🔨', stack: 1, slot: 'hand', tool: 'hammer', damage: 17, uses: 75, hint: 'Bấm vào công trình để đập bỏ, lấy lại một nửa nguyên liệu và đồ bên trong.' },
   spear: { name: 'Giáo', icon: '🔱', stack: 1, slot: 'hand', damage: 34, uses: 150 },
   boomerang: { name: 'Boomerang', icon: '🪃', stack: 1, slot: 'hand', damage: 25, uses: 30, thrown: true },
   icespear: { name: 'Giáo Băng', icon: '🔱', stack: 1, slot: 'hand', damage: 59, uses: 250 },
@@ -126,10 +127,10 @@ export const CATEGORIES = [
 export const RECIPES = [
   { id: 'axe', cat: 'tool', needs: { twigs: 1, flint: 1 }, desc: 'Dùng để chặt cây.' },
   { id: 'pickaxe', cat: 'tool', needs: { twigs: 2, flint: 2 }, desc: 'Dùng để đập đá, có thể ra vàng.' },
-  { id: 'shovel', cat: 'tool', needs: { twigs: 2, flint: 2 }, desc: 'Đào bụi cỏ, cây non, bụi quả mọng để đem trồng gần nhà.' },
+  { id: 'shovel', cat: 'tool', needs: { twigs: 2, flint: 2 }, desc: 'Cầm xẻng rồi bấm vào bụi cỏ, cây non, bụi quả mọng để đào cả cây lên. Bấm vào cây đã đào trong túi để trồng cạnh nhà, sau đó nó tự mọc lại như bình thường.' },
   { id: 'goldenaxe', cat: 'tool', station: 'science', needs: { twigs: 4, gold: 2 }, desc: 'Bền gấp 4 lần rìu thường.' },
   { id: 'goldenpickaxe', cat: 'tool', station: 'science', needs: { twigs: 4, gold: 2 }, desc: 'Bền gấp 4 lần cuốc chim thường.' },
-  { id: 'hammer', cat: 'tool', station: 'science', needs: { twigs: 3, rocks: 3, rope: 2 }, desc: 'Đập bỏ công trình, lấy lại một nửa nguyên liệu.' },
+  { id: 'hammer', cat: 'tool', needs: { twigs: 3, rocks: 3, flint: 1 }, desc: 'Cầm búa rồi bấm vào công trình (lửa, lều, rương...) để đập bỏ, lấy lại một nửa nguyên liệu và mọi thứ bên trong.' },
 
   { id: 'torch', cat: 'light', needs: { cutgrass: 2, twigs: 2 }, desc: 'Nguồn sáng mang theo. Cháy 75 giây.' },
   { id: 'campfire', cat: 'light', name: 'Lửa trại', icon: '🏕️', place: true, needs: { cutgrass: 3, log: 2 }, desc: 'Xua tan bóng tối, dùng để nướng đồ. Biến mất khi hết củi.' },
@@ -143,7 +144,7 @@ export const RECIPES = [
   { id: 'chest', cat: 'survival', name: 'Rương', icon: '🧰', place: true, station: 'science', needs: { boards: 3 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ. Ai cũng mở được, tiện chia đồ với bạn bè.` },
   { id: 'icebox', cat: 'survival', name: 'Hộp Đá Lạnh', icon: '🧊', place: true, station: 'science', needs: { bearger_fur: 1, gold: 2, cutstone: 2 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ, đồ ăn bên trong hư chậm gấp đôi. Làm từ Lông Gấu của boss Bearger.` },
 
-  { id: 'rope', cat: 'refine', station: 'science', needs: { cutgrass: 3 }, desc: 'Nguyên liệu cho búa, giáp, mũ.' },
+  { id: 'rope', cat: 'refine', station: 'science', needs: { cutgrass: 3 }, desc: 'Nguyên liệu cho giáp, mũ, lều, boomerang.' },
   { id: 'boards', cat: 'refine', station: 'science', needs: { log: 4 }, desc: 'Nguyên liệu cho rương, nồi nấu. Cũng là củi tốt.' },
   { id: 'cutstone', cat: 'refine', station: 'science', needs: { rocks: 3 }, desc: 'Nguyên liệu cho nồi nấu.' },
 
@@ -205,9 +206,12 @@ export function biomeAt(seed, x, y) {
   return best.b;
 }
 
-export function phaseAt(t) {
-  const d = t % DAY_LEN;
-  return d < DAY_END ? 'day' : d < DUSK_END ? 'dusk' : 'night';
+// Đồng hồ mặc định; mỗi thế giới có thể có đồng hồ riêng theo thông số lúc tạo (clockOf trong settings.js).
+export const DEFAULT_CLOCK = { len: DAY_LEN, dayEnd: DAY_END, duskEnd: DUSK_END };
+
+export function phaseAt(t, clock = DEFAULT_CLOCK) {
+  const d = t % clock.len;
+  return d < clock.dayEnd ? 'day' : d < clock.duskEnd ? 'dusk' : 'night';
 }
 
 const DUSK_A = 0.45;
@@ -215,12 +219,12 @@ const NIGHT_A = 0.94;
 const ramp = (x, a, b, v0, v1) => v0 + (v1 - v0) * Math.min(1, Math.max(0, (x - a) / (b - a)));
 
 // Độ tối của màn hình (0 = sáng, 1 = tối hẳn) tại thời điểm t.
-export function darknessAt(t) {
-  const d = t % DAY_LEN;
+export function darknessAt(t, { len, dayEnd, duskEnd } = DEFAULT_CLOCK) {
+  const d = t % len;
   if (d < 8) return ramp(d, 0, 8, NIGHT_A, 0);
-  if (d < DAY_END - 8) return 0;
-  if (d < DAY_END) return ramp(d, DAY_END - 8, DAY_END, 0, DUSK_A);
-  if (d < DUSK_END - 8) return DUSK_A;
-  if (d < DUSK_END) return ramp(d, DUSK_END - 8, DUSK_END, DUSK_A, NIGHT_A);
+  if (d < dayEnd - 8) return 0;
+  if (d < dayEnd) return ramp(d, dayEnd - 8, dayEnd, 0, DUSK_A);
+  if (d < duskEnd - 8) return DUSK_A;
+  if (d < duskEnd) return ramp(d, duskEnd - 8, duskEnd, DUSK_A, NIGHT_A);
   return NIGHT_A;
 }

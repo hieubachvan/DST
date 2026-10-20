@@ -43,6 +43,7 @@ socket.on('init', (init) => {
   if (game) return;
   lobby.joined();
   hud.serverName = init.serverName;
+  hud.setWorld(init.settings);
   document.getElementById('login').hidden = true;
   hud.show();
   game = new Phaser.Game({

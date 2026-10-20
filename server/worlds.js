@@ -4,6 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Game } from './game.js';
 import { DATA_DIR, hashSecret, verifySecret } from './db.js';
+import { sanitizeSettings, presetOf } from '../shared/settings.js';
+
+const parseSettings = (json) => {
+  try { return sanitizeSettings(json ? JSON.parse(json) : null); } catch { return sanitizeSettings(null); }
+};
 
 const UNLOAD_AFTER_MS = Number(process.env.UNLOAD_AFTER_MS) || 60_000; // vắng người quá 1 phút thì lưu và gỡ khỏi bộ nhớ
 const MAX_FAILS = 5; // nhập sai passcode quá số lần này...
@@ -43,22 +48,29 @@ export class WorldManager {
     return id;
   }
 
-  list() {
-    return this.db.prepare('SELECT id, name, day, created_at FROM servers ORDER BY created_at').all().map((r) => {
+  // Danh sách server. preset: gói thông số (easy / normal / hard, null nếu đã chỉnh riêng) để người chơi biết độ khó;
+  // admin xem được thêm toàn bộ thông số.
+  list(admin = false) {
+    return this.db.prepare('SELECT id, name, day, settings, created_at FROM servers ORDER BY created_at').all().map((r) => {
       const game = this.active.get(r.id);
-      return { id: r.id, name: r.name, day: game ? game.day : r.day, online: game ? game.players.size : 0 };
+      const settings = parseSettings(r.settings);
+      return {
+        id: r.id, name: r.name, day: game ? game.day : r.day, online: game ? game.players.size : 0,
+        preset: presetOf(settings), ...(admin && { settings }),
+      };
     });
   }
 
-  create(name, passcode) {
+  create(name, passcode, settings) {
     name = String(name ?? '').trim();
     passcode = String(passcode ?? '');
     if (name.length < 1 || name.length > 40) throw new Error('Tên server phải từ 1 đến 40 ký tự.');
     if (passcode.length < 4 || passcode.length > 32) throw new Error('Passcode phải từ 4 đến 32 ký tự.');
     const id = this.slug(name);
     const now = Date.now();
-    this.db.prepare('INSERT INTO servers (id, name, pass_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, name, hashSecret(passcode), now, now);
+    // Thông số chỉ đặt lúc tạo; update() không đổi được.
+    this.db.prepare('INSERT INTO servers (id, name, pass_hash, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, name, hashSecret(passcode), JSON.stringify(sanitizeSettings(settings)), now, now);
     return { id, name };
   }
 
@@ -93,11 +105,12 @@ export class WorldManager {
   load(id) {
     const running = this.active.get(id);
     if (running) return running;
-    const row = this.db.prepare('SELECT id, name, world FROM servers WHERE id = ?').get(id);
+    const row = this.db.prepare('SELECT id, name, world, settings FROM servers WHERE id = ?').get(id);
     if (!row) return null;
     const game = new Game(this.io, {
       id: row.id,
       name: row.name,
+      settings: parseSettings(row.settings),
       data: row.world ? JSON.parse(row.world) : null,
       persist: (data, day) => {
         this.db.prepare('UPDATE servers SET world = ?, day = ?, updated_at = ? WHERE id = ?')

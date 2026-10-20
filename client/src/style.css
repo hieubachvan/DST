@@ -408,6 +408,21 @@ img { -webkit-user-drag: none; }
   color: var(--ink);
 }
 #guide-tabs button.on { background: var(--wood); color: var(--paper); }
+.guide-panel #guide-search { font-size: 15px; }
+#guide-cats { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+#guide-cats button {
+  width: auto;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: normal;
+  background: #f5ecd6;
+  color: var(--ink);
+  border: 2px solid var(--paper-dark);
+  border-radius: 999px;
+}
+#guide-cats button.on { border-color: var(--wood); background: var(--paper-dark); font-weight: bold; }
+#guide-empty { text-align: center; margin: 20px 0; }
+.g-sechead { margin-top: 18px !important; }
 .c-day { color: #a07a10; }
 .c-dusk { color: #a8432a; }
 .c-night { color: #283a6a; }
@@ -611,12 +626,46 @@ img.mini { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px;
 .panel button.small { font-size: 13px; padding: 6px 10px; width: auto; }
 .panel button.danger { background: #a8321f; }
 .panel button.danger:hover { background: #c23c26; }
+.panel button.secondary { margin-top: 14px; background: var(--paper-dark); color: var(--ink); font-size: 15px; }
+.panel button.secondary:hover { background: #d9c79e; }
 #admin-open { display: block; margin: 12px auto 0; }
 .admin-panel { width: min(720px, 100%); text-align: left; max-height: calc(100vh - 32px); overflow-y: auto; }
 .admin-panel h1 { text-align: center; margin-bottom: 14px; }
 .admin-panel .row { display: flex; gap: 6px; align-items: center; }
 .admin-panel .row input { margin: 0; flex: 1; min-width: 0; }
 .admin-panel .row button { width: auto; flex: none; }
+
+/* Thông số thế giới: form tạo server và bảng tóm tắt (admin, hướng dẫn) */
+#ws { margin: 8px 0 12px; border: 2px solid var(--paper-dark); border-radius: 10px; padding: 8px 12px; background: #f5ecd6; }
+#ws summary { cursor: pointer; font-size: 15px; }
+#ws[open] summary { margin-bottom: 6px; }
+#ws > p { margin: 4px 0 8px; opacity: 0.85; }
+#ws-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+#ws-presets button { background: var(--paper-dark); color: var(--ink); }
+#ws-presets button.on { background: var(--wood); color: var(--paper); }
+#ws-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 8px; }
+#ws-fields fieldset { margin: 0; border: 1px solid var(--paper-dark); border-radius: 8px; padding: 6px 10px 8px; background: #fff8e8; }
+#ws-fields legend { font-weight: bold; padding: 0 4px; }
+.ws-f { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 4px; border-radius: 6px; font-size: 13px; }
+.ws-f.changed { background: #fbe3a0; }
+.ws-f.off { opacity: 0.45; }
+.ws-f[title] { cursor: help; }
+.ws-in { display: flex; align-items: center; gap: 4px; flex: none; }
+.panel .ws-f input, .panel .ws-f select {
+  width: auto; margin: 0; padding: 3px 6px; font: inherit; font-size: 14px;
+  border: 1px solid var(--wood); border-radius: 6px; background: #fff;
+}
+.panel .ws-f input[type='number'] { width: 64px; }
+.panel .ws-f input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--wood); }
+.ws-val { min-width: 34px; font-size: 12px; opacity: 0.75; }
+.ws-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 14px; text-align: left; }
+.ws-summary h4 { margin: 6px 0 2px; font-size: 13px; }
+.ws-summary ul { list-style: none; padding: 0 !important; margin: 0 !important; }
+.ws-summary li { display: flex; justify-content: space-between; gap: 8px; font-size: 12px !important; line-height: 1.5 !important; border-bottom: 1px dotted var(--paper-dark); }
+.ws-summary li.diff b { color: #a8432a; }
+tr.ws-info td { background: #f5ecd6; }
+#guide-world { margin: 0 0 10px; padding: 6px 10px; border: 2px solid var(--paper-dark); border-radius: 10px; background: #f5ecd6; }
+#guide-world summary { cursor: pointer; font-size: 14px; }
 #admin-create { margin-bottom: 12px; flex-wrap: wrap; }
 .table-wrap { overflow-x: auto; }
 #admin-servers { width: 100%; border-collapse: collapse; font-size: 14px; }

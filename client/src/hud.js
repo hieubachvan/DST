@@ -1,7 +1,8 @@
 import {
   ITEMS, RECIPES, CATEGORIES, STATIONS, GEAR_SLOTS, GEAR_NAMES, INV_SIZE, PACK_SIZE, CHEST_SIZE,
-  MAX_HP, MAX_HUNGER, MAX_SANITY, DAY_LEN, phaseAt,
+  MAX_HP, MAX_HUNGER, MAX_SANITY, phaseAt,
 } from '../../shared/data.js';
+import { PRESETS, sanitizeSettings, clockOf, presetOf, settingsHtml, durationText } from '../../shared/settings.js';
 import { iconHtml, spriteImg } from './art.js';
 import { Controls } from './touch.js';
 import { Sound } from './audio.js';
@@ -15,6 +16,11 @@ const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const recipeName = (r) => r.name ?? ITEMS[r.id].name;
 const recipeIcon = (r) => iconHtml(r.id, r.icon ?? ITEMS[r.id]?.icon);
 const mini = (id) => iconHtml(id).replace('class="ic', 'class="mini');
+
+// Chữ để tìm kiếm: bỏ dấu, chữ thường, để gõ "da lua" cũng ra "Đá lửa".
+const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ');
+// Các mục hướng dẫn có dữ liệu để tìm kiếm.
+const SEARCH_TABS = new Set(['craft', 'res', 'food']);
 
 // Độ tươi còn lại (1 = mới, 0 = sắp hỏng; với đồ ôi thiu là sắp biến mất).
 const freshness = (it) => Math.max(0, 1 - (it.age ?? 0) / ITEMS[it.id].perish);
@@ -42,6 +48,7 @@ function itemInfo(it) {
   if (def.perish) lines.push(it.id === 'rotten' ? `Sắp biến mất (${Math.round(freshness(it) * 100)}%)` : `Độ tươi ${Math.round(freshness(it) * 100)}%`);
   if (def.pack) lines.push(`Thêm ${PACK_SIZE} ô đồ${it.slots?.some(Boolean) ? ' · đang chứa đồ' : ''}`);
   if (def.fuel) lines.push(`Củi: +${def.fuel} giây`);
+  if (def.hint) lines.push(`Cách dùng: ${def.hint}`);
   return lines;
 }
 
@@ -71,6 +78,7 @@ export class Hud {
     this.inv = Array(INV_SIZE).fill(null);
     this.gear = { hand: null, head: null, body: null };
     this.stations = new Set();
+    this.clock = clockOf(null); // đồng hồ mặc định, đổi theo thế giới khi vào game (setWorld)
     this.cat = CATEGORIES[0].id;
     this.chestId = null;
     this.typing = false;
@@ -244,8 +252,10 @@ export class Hud {
 
     $('guide-recipes').innerHTML = CATEGORIES.map((c) => {
       const list = RECIPES.filter((r) => r.cat === c.id);
-      return `<h3>${c.icon} ${c.name}</h3><div class="g-grid">${list.map(card).join('')}</div>`;
+      return `<div class="g-cat" data-cat="${c.id}"><h3>${c.icon} ${c.name}</h3><div class="g-grid">${list.map(card).join('')}</div></div>`;
     }).join('');
+    $('guide-cats').innerHTML = [{ id: 'all', name: 'Tất cả', icon: '📋' }, ...CATEGORIES]
+      .map((c) => `<button type="button" data-cat="${c.id}">${c.icon} ${c.name}</button>`).join('');
 
     $('guide-res').innerHTML = `<table class="g-table"><tr><th>Nguyên liệu</th><th>Lấy ở đâu</th><th>Dùng để làm</th></tr>${
       Object.entries(ITEMS).filter(([, d]) => d.from && !d.food).map(([id, d]) => {
@@ -272,15 +282,68 @@ export class Hud {
       }).join('')
     }</table>`;
 
+    // Chữ tìm kiếm của từng thẻ công thức / dòng bảng: toàn bộ nội dung đã bỏ dấu.
+    for (const el of document.querySelectorAll('#guide .g-card, #guide .g-table tr')) {
+      if (el.tagName !== 'TR' || el.querySelector('td')) el.dataset.q = norm(el.textContent);
+    }
+
+    this.guideTab = 'start';
+    this.guideCat = 'all';
     for (const btn of document.querySelectorAll('#guide-tabs button')) {
       btn.addEventListener('click', () => {
-        for (const b of document.querySelectorAll('#guide-tabs button')) b.classList.toggle('on', b === btn);
-        for (const s of document.querySelectorAll('#guide section')) s.hidden = s.dataset.tab !== btn.dataset.tab;
+        this.guideTab = btn.dataset.tab;
+        $('guide-search').value = '';
+        this.filterGuide();
       });
     }
+    for (const btn of document.querySelectorAll('#guide-cats button')) {
+      btn.addEventListener('click', () => {
+        this.guideCat = btn.dataset.cat;
+        this.filterGuide();
+      });
+    }
+    $('guide-search').addEventListener('input', () => this.filterGuide());
+    this.filterGuide();
     $('guide-btn').addEventListener('click', () => this.toggleGuide());
+    $('lobby-guide').addEventListener('click', () => this.toggleGuide(true));
     document.querySelector('.guide-close').addEventListener('click', () => this.toggleGuide(false));
     $('guide').addEventListener('click', (e) => { if (e.target.id === 'guide') this.toggleGuide(false); });
+  }
+
+  // Đang gõ tìm kiếm thì hiện kết quả của mọi mục có dữ liệu cùng lúc; không thì chỉ hiện mục đang chọn,
+  // riêng mục Chế tạo lọc thêm theo nhóm.
+  filterGuide() {
+    const q = norm($('guide-search').value.trim());
+    for (const b of document.querySelectorAll('#guide-tabs button')) b.classList.toggle('on', !q && b.dataset.tab === this.guideTab);
+    for (const s of document.querySelectorAll('#guide section')) s.hidden = q ? !SEARCH_TABS.has(s.dataset.tab) : s.dataset.tab !== this.guideTab;
+    for (const el of document.querySelectorAll('#guide .g-intro')) el.hidden = !!q;
+    for (const el of document.querySelectorAll('#guide .g-sechead')) el.hidden = !q;
+    $('guide-cats').hidden = !!q;
+    for (const b of document.querySelectorAll('#guide-cats button')) b.classList.toggle('on', b.dataset.cat === this.guideCat);
+
+    let found = 0;
+    for (const g of document.querySelectorAll('#guide-recipes .g-cat')) {
+      const inCat = !!q || this.guideCat === 'all' || g.dataset.cat === this.guideCat;
+      let n = 0;
+      for (const c of g.querySelectorAll('.g-card')) {
+        c.hidden = !(inCat && c.dataset.q.includes(q));
+        if (!c.hidden) n++;
+      }
+      g.hidden = !n;
+      found += n;
+    }
+    for (const t of document.querySelectorAll('#guide .g-table')) {
+      let n = 0;
+      for (const tr of t.querySelectorAll('tr[data-q]')) {
+        tr.hidden = !tr.dataset.q.includes(q);
+        if (!tr.hidden) n++;
+      }
+      t.hidden = !n;
+      found += n;
+    }
+    // Mục không còn kết quả nào thì ẩn luôn khi đang tìm.
+    if (q) for (const s of document.querySelectorAll('#guide section')) if (!s.hidden && !s.querySelector('.g-card:not([hidden]), tr[data-q]:not([hidden])')) s.hidden = true;
+    $('guide-empty').hidden = !q || found > 0;
   }
 
   toggleGuide(open = $('guide').hidden) {
@@ -396,11 +459,23 @@ export class Hud {
   // ---------- Bàn phím ----------
 
   onKey(e) {
-    if ($('hud').hidden) return;
+    // Bảng hướng dẫn mở được cả ở màn hình chờ (trước khi vào game).
     if (!$('guide').hidden) {
-      if (e.key === 'Escape' || e.key === 'h' || e.key === 'H') this.toggleGuide(false);
+      const search = $('guide-search');
+      if (e.target === search) {
+        // Esc lần đầu xóa chữ đang tìm, lần sau mới đóng bảng; các phím khác là đang gõ.
+        if (e.key !== 'Escape') return;
+        if (search.value) {
+          e.preventDefault();
+          search.value = '';
+          return this.filterGuide();
+        }
+        search.blur();
+      }
+      if (e.key === 'Escape' || (!$('hud').hidden && (e.key === 'h' || e.key === 'H'))) this.toggleGuide(false);
       return;
     }
+    if ($('hud').hidden) return;
     const chatin = $('chatin');
     if (e.key === 'Enter') {
       if (this.typing) return; // form chat tự gửi
@@ -528,18 +603,47 @@ export class Hud {
     $('vignette').style.opacity = s.dead ? 0 : r < 0.5 ? (1 - r / 0.5) * 0.85 : 0;
   }
 
+  // Thông số của thế giới vừa vào (gói init): đồng hồ ngày đêm và các con số trong hướng dẫn.
+  setWorld(settings) {
+    const cfg = sanitizeSettings(settings);
+    this.clock = clockOf(cfg);
+    const { len, dayEnd, duskEnd } = this.clock;
+    const deg = (t) => `${(t / len) * 360}deg`;
+    $('clock').style.background = `conic-gradient(#e2b84a 0deg ${deg(dayEnd)}, #b8553a ${deg(dayEnd)} ${deg(duskEnd)}, #283a6a ${deg(duskEnd)} 360deg)`;
+
+    const fill = (key, text) => { for (const el of document.querySelectorAll(`#guide [data-w="${key}"]`)) el.textContent = text; };
+    const show = (key, on) => { for (const el of document.querySelectorAll(`#guide [data-w="${key}"]`)) el.hidden = !on; };
+    fill('dayLen', durationText(len));
+    fill('dayPart', durationText(dayEnd));
+    fill('duskPart', durationText(duskEnd - dayEnd));
+    fill('nightPart', durationText(len - duskEnd));
+    fill('hunger', durationText(480 / cfg.hunger));
+    fill('abandon', `${cfg.abandonDays} ngày`);
+    show('abandonOn', cfg.abandonDays > 0);
+    fill('houndDay', `ngày ${String(cfg.houndDay).replace('.', ',')}`);
+    show('houndsOn', cfg.hounds);
+    fill('regrow', cfg.regrow === 1 ? '' : ` Ở thế giới này mọi thứ mọc lại ${cfg.regrow > 1 ? 'nhanh' : 'chậm'} hơn (×${String(cfg.regrow).replace('.', ',')}).`);
+
+    const preset = presetOf(cfg);
+    $('guide-world-preset').textContent = preset ? `${PRESETS[preset].icon} ${PRESETS[preset].name}` : '⚙️ Tùy chỉnh';
+    $('guide-world-list').innerHTML = settingsHtml(cfg);
+    $('guide-world').hidden = false;
+    $('guide-world-note').hidden = true;
+  }
+
   setClock(t) {
-    const d = t % DAY_LEN;
-    const ph = phaseAt(t);
+    const { len } = this.clock;
+    const d = t % len;
+    const ph = phaseAt(t, this.clock);
     if (ph !== this.lastPhase) {
       if (this.lastPhase) this.sound.phase(ph); // không phát lúc vừa vào game
       this.lastPhase = ph;
       const img = spriteImg({ day: 'ui_sun', dusk: 'ui_sunset', night: 'ui_moon' }[ph], 'clock-ic');
       $('clock-ic').innerHTML = img ?? '';
     }
-    $('hand').style.transform = `rotate(${(d / DAY_LEN) * 360}deg)`;
-    $('dayNum').textContent = `Ngày ${Math.floor(t / DAY_LEN) + 1}`;
-    $('phase').textContent = PHASE_NAMES[phaseAt(t)];
+    $('hand').style.transform = `rotate(${(d / len) * 360}deg)`;
+    $('dayNum').textContent = `Ngày ${Math.floor(t / len) + 1}`;
+    $('phase').textContent = PHASE_NAMES[ph];
   }
 
   setRoster(list) {

@@ -103,6 +103,7 @@
       <div class="panel guide-panel">
         <button class="guide-close" title="Đóng (Esc)">✕</button>
         <h1>Hướng dẫn sinh tồn</h1>
+        <input id="guide-search" type="search" placeholder="🔍 Tìm vật phẩm, công thức, thức ăn... (vd: da lua, xeng)" autocomplete="off" enterkeyhint="search" />
         <nav id="guide-tabs">
           <button data-tab="start" class="on">Bắt đầu</button>
           <button data-tab="craft">Chế tạo</button>
@@ -112,7 +113,13 @@
         </nav>
         <section data-tab="start">
           <h2>Mục tiêu: sống sót càng nhiều ngày càng tốt</h2>
-          <p>Một ngày dài 4 phút: <b class="c-day">ban ngày 2 phút</b>, <b class="c-dusk">chạng vạng 1 phút</b>, <b class="c-night">ban đêm 1 phút</b>. Đồng hồ ở góc phải trên cho biết đang là buổi nào.</p>
+          <!-- Các chỗ data-w được điền theo thông số của server đang chơi (hud.js: setWorld); ở màn hình chờ là số mặc định. -->
+          <p class="muted" id="guide-world-note">Các con số bên dưới là thông số mặc định. Mỗi server có thể được admin chỉnh khác, vào game rồi mở lại hướng dẫn để xem đúng thông số của server đó.</p>
+          <details id="guide-world" hidden>
+            <summary>⚙️ Thông số của thế giới này: <b id="guide-world-preset"></b></summary>
+            <div id="guide-world-list"></div>
+          </details>
+          <p>Một ngày dài <span data-w="dayLen">4 phút</span>: <b class="c-day">ban ngày <span data-w="dayPart">2 phút</span></b>, <b class="c-dusk">chạng vạng <span data-w="duskPart">1 phút</span></b>, <b class="c-night">ban đêm <span data-w="nightPart">1 phút</span></b>. Đồng hồ ở góc phải trên cho biết đang là buổi nào.</p>
           <h3>Ngày đầu tiên nên làm gì</h3>
           <ol>
             <li>Bẻ <b>🥢 cành cây</b> ở cây non và nhặt <b>🔷 đá lửa</b> trên mặt đất. Giữ <b>Space</b> để tự nhặt đồ gần nhất.</li>
@@ -124,18 +131,24 @@
           <h3>Ba chỉ số cần giữ</h3>
           <ul>
             <li><b>❤️ Máu</b>: về 0 là chết. Hồi bằng thuốc đắp và đồ ăn nướng.</li>
-            <li><b>🍗 Độ no</b>: giảm dần theo thời gian (đầy bụng thì trụ được khoảng 8 phút). Về 0 thì bắt đầu mất máu.</li>
+            <li><b>🍗 Độ no</b>: giảm dần theo thời gian (đầy bụng thì trụ được khoảng <span data-w="hunger">8 phút</span>). Về 0 thì bắt đầu mất máu.</li>
             <li><b>🧠 Tinh thần</b>: giảm vào ban đêm và khi ở gần quái, tăng chậm vào ban ngày. Hái hoa được +5. Tinh thần thấp thì màn hình tối tím lại, về 0 thì mất máu.</li>
           </ul>
           <h3>Khoa học & công trình (sau khi đã sống qua đêm đầu)</h3>
           <ol>
             <li>Làm <b>⛏️ Cuốc chim</b>, đập tảng đá để lấy <b>🪨 đá</b> và <b>🪙 vàng</b> (không phải tảng nào cũng ra vàng).</li>
             <li>Dựng <b>⚗️ Máy Khoa Học</b> (1 vàng + 4 gỗ + 4 đá) ở gần trại.</li>
-            <li>Đứng cạnh máy, các món có dấu <b>🔒</b> sẽ mở khóa: dây thừng, ván gỗ, gạch đá, búa, rương, giáp gỗ, mũ giáp, nồi nấu.</li>
+            <li>Đứng cạnh máy, các món có dấu <b>🔒</b> sẽ mở khóa: dây thừng, ván gỗ, gạch đá, rương, giáp gỗ, mũ giáp, nồi nấu.</li>
             <li>Dựng <b>🫕 Nồi nấu</b> để làm các món hầm rất no và hồi nhiều máu.</li>
             <li>Thay lửa trại bằng <b>♨️ Hố lửa đá</b>: cháy lâu hơn, khi tắt vẫn còn, chỉ cần thêm củi.</li>
             <li>Đặt <b>🪤 Bẫy thỏ</b> ở đồng cỏ để có thịt mà không phải đuổi theo thỏ.</li>
           </ol>
+          <h3>Xẻng, búa & công trình</h3>
+          <ul>
+            <li><b>🪏 Xẻng</b>: cầm lên tay rồi bấm vào bụi cỏ, cây non hoặc bụi quả mọng để đào cả cây lên. Bấm vào cây đã đào trong túi để trồng xuống cạnh bạn, nhờ vậy có thể làm vườn ngay cạnh trại.</li>
+            <li><b>🔨 Búa</b> (3 cành + 3 đá + 1 đá lửa, không cần Máy Khoa Học): cầm lên tay rồi bấm vào công trình để đập bỏ. Lấy lại một nửa nguyên liệu và mọi thứ đang chứa bên trong. Cẩn thận đừng bấm nhầm vào rương khi đang cầm búa.</li>
+            <li data-w="abandonOn"><b>Công trình bỏ hoang sẽ mục nát</b>: nếu suốt <b data-w="abandon">5 ngày</b> không có ai đi tới gần (khoảng nửa màn hình), công trình sẽ sập, rơi lại một nửa nguyên liệu và đồ bên trong. Đồ rơi dưới đất cũng tự biến mất sau 5 phút, nên hãy dọn đồ khỏi rương trước khi chuyển nhà.</li>
+          </ul>
           <h3>Đếm ngày & lưu nhân vật</h3>
           <ul>
             <li><b>Ngày ở đồng hồ</b> là tuổi của thế giới, chung cho mọi người. Khi không còn ai online, thời gian thế giới tạm dừng.</li>
@@ -148,23 +161,28 @@
           <ul>
             <li><b>Bóng tối</b>: ban đêm đứng ngoài vùng sáng khoảng 4 giây sẽ bị tấn công mất 40 máu, và cứ thế lặp lại.</li>
             <li><b>🕷️ Nhện</b>: sống trong rừng, ban đêm kéo tới chỗ người chơi. Đánh bằng giáo, hoặc chạy thoát (bạn chạy nhanh hơn nhện).</li>
-            <li><b>🐕 Chó săn</b>: khoảng từ ngày 4, cứ vài ngày lại có một đàn kéo tới tấn công từng người chơi. Sẽ có cảnh báo "tiếng gầm gừ" khoảng 25 giây trước. Chó săn chạy nhanh hơn bạn nên không chạy thoát được: hãy mặc giáp, cầm giáo và đứng cạnh đồng đội. Càng về sau đàn càng đông.</li>
+            <li data-w="houndsOn"><b>🐕 Chó săn</b>: khoảng từ <span data-w="houndDay">ngày 5,5</span>, cứ vài ngày lại có một đàn kéo tới tấn công từng người chơi. Sẽ có cảnh báo "tiếng gầm gừ" khoảng 25 giây trước. Chó săn chạy nhanh hơn bạn nên không chạy thoát được: hãy mặc giáp, cầm giáo và đứng cạnh đồng đội. Càng về sau đàn càng đông.</li>
             <li><b>Chết</b>: rơi toàn bộ đồ tại chỗ, thành hồn ma và hồi sinh ở giữa bản đồ sau 12 giây. Quay lại chỗ cũ để nhặt đồ. Vừa hồi sinh thì có <b>25 giây</b> bóng tối chưa tấn công được (nhân vật nhấp nháy). Hồi sinh lúc chạng vạng hoặc ban đêm thì được cầm sẵn một <b>🔥 Đuốc</b>.</li>
           </ul>
         </section>
         <section data-tab="craft" hidden>
-          <p>Bảng <b>Chế tạo</b> bên trái màn hình: công thức nào đủ nguyên liệu thì sáng lên, bấm vào là chế tạo. Số <span class="ok">xanh</span> nghĩa là đã đủ, <span class="no">đỏ</span> là còn thiếu.</p>
+          <h3 class="g-sechead" hidden>🛠️ Chế tạo</h3>
+          <p class="g-intro">Bảng <b>Chế tạo</b> bên trái màn hình: công thức nào đủ nguyên liệu thì sáng lên, bấm vào là chế tạo. Số <span class="ok">xanh</span> nghĩa là đã đủ, <span class="no">đỏ</span> là còn thiếu.</p>
+          <div id="guide-cats"></div>
           <div id="guide-recipes"></div>
         </section>
         <section data-tab="res" hidden>
-          <p>Thế giới có 3 vùng: <b>đồng cỏ</b> (xanh nhạt, nhiều cỏ, hoa, cà rốt), <b>rừng</b> (xanh đậm, nhiều cây và nhện) và <b>vùng đất đá</b> (nâu, nhiều tảng đá và đá lửa). Thế giới <b>không có biên giới</b>: cứ đi tiếp là sẽ có vùng đất mới.</p>
-          <p><b>Mọc lại:</b> cỏ, cây non, bụi quả mọng mọc lại tại chỗ sau 1–1,5 phút. Hoa, đá lửa sau 1 phút, cà rốt và cây sau 1,5 phút, tảng đá sau 2 phút, tất cả đều mọc lại đúng chỗ cũ.</p>
+          <h3 class="g-sechead" hidden>🪵 Tài nguyên</h3>
+          <p class="g-intro">Thế giới có 3 vùng: <b>đồng cỏ</b> (xanh nhạt, nhiều cỏ, hoa, cà rốt), <b>rừng</b> (xanh đậm, nhiều cây và nhện) và <b>vùng đất đá</b> (nâu, nhiều tảng đá và đá lửa). Thế giới <b>không có biên giới</b>: cứ đi tiếp là sẽ có vùng đất mới.</p>
+          <p class="g-intro"><b>Mọc lại:</b> cỏ, cây non, bụi quả mọng mọc lại tại chỗ sau 1–1,5 phút. Hoa, đá lửa sau 1 phút, cà rốt và cây sau 1,5 phút, tảng đá sau 2 phút, tất cả đều mọc lại đúng chỗ cũ.<span data-w="regrow"></span></p>
           <div id="guide-res"></div>
         </section>
         <section data-tab="food" hidden>
-          <p>Bấm chuột trái vào thức ăn để ăn. Đứng gần lửa trại rồi <b>chuột phải</b> để nướng, đồ nướng bổ hơn và thịt quái nướng đỡ độc hơn.</p>
+          <h3 class="g-sechead" hidden>🍖 Thức ăn</h3>
+          <p class="g-intro">Bấm chuột trái vào thức ăn để ăn. Đứng gần lửa trại rồi <b>chuột phải</b> để nướng, đồ nướng bổ hơn và thịt quái nướng đỡ độc hơn.</p>
           <div id="guide-food"></div>
         </section>
+        <p id="guide-empty" class="muted" hidden>Không tìm thấy gì. Thử gõ ít chữ hơn, không cần dấu.</p>
         <section data-tab="keys" hidden>
           <table class="keys">
             <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / mũi tên</td><td>Di chuyển</td></tr>
@@ -176,6 +194,7 @@
             <tr><td><kbd>1</kbd> … <kbd>0</kbd></td><td>Dùng nhanh ô 1–10 của túi đồ</td></tr>
             <tr><td>Ô ✋ 🎩 👕 cạnh túi đồ</td><td>Bấm để cất đồ đang dùng vào túi</td></tr>
             <tr><td>Click vào rương</td><td>Mở rương. Bấm đồ trong túi để cất, bấm đồ trong rương để lấy. Đi xa hoặc <kbd>Esc</kbd> để đóng</td></tr>
+            <tr><td>Click khi đang cầm 🪏 xẻng</td><td>Đào bụi cỏ, cây non, bụi quả mọng lên. Bấm vào cây đã đào trong túi để trồng</td></tr>
             <tr><td>Click khi đang cầm 🔨 búa</td><td>Đập bỏ công trình, lấy lại một nửa nguyên liệu</td></tr>
             <tr><td><kbd>Enter</kbd></td><td>Chat với người chơi khác</td></tr>
             <tr><td><kbd>H</kbd></td><td>Mở / đóng bảng hướng dẫn này</td></tr>
@@ -228,6 +247,7 @@
           <li>Trước khi trời tối, hãy đốt <b>lửa trại</b>. Bóng tối sẽ giết bạn.</li>
           <li>Đừng để bụng đói. Hái quả mọng và cà rốt, nướng lên còn ngon hơn.</li>
         </ul>
+        <button type="button" class="secondary" id="lobby-guide">📖 Hướng dẫn & tra cứu vật phẩm</button>
         <button type="button" class="link small" id="admin-open">Quản trị server</button>
       </div>
     </div>
@@ -244,10 +264,19 @@
         </form>
 
         <div id="admin-main" hidden>
-          <form id="admin-create" class="row">
-            <input id="new-name" maxlength="40" placeholder="Tên server mới" autocomplete="off" />
-            <input id="new-pass" maxlength="32" placeholder="Passcode (4–32 ký tự)" autocomplete="off" />
-            <button type="submit">Tạo server</button>
+          <form id="admin-create">
+            <div class="row">
+              <input id="new-name" maxlength="40" placeholder="Tên server mới" autocomplete="off" />
+              <input id="new-pass" maxlength="32" placeholder="Passcode (4–32 ký tự)" autocomplete="off" />
+              <button type="submit">Tạo server</button>
+            </div>
+            <!-- Thông số thế giới: chọn gói rồi chỉnh từng ô. Chỉ đặt được lúc tạo, sau đó không đổi được. -->
+            <details id="ws">
+              <summary>⚙️ Thông số thế giới: <b id="ws-current">Mặc định</b></summary>
+              <p class="muted">Chọn một gói có sẵn rồi chỉnh tiếp từng ô nếu muốn. Ô nào khác với gói đang chọn sẽ được tô vàng. <b>Thông số không đổi được sau khi đã tạo server.</b></p>
+              <div id="ws-presets"></div>
+              <div id="ws-fields"></div>
+            </details>
           </form>
           <div class="table-wrap"><table id="admin-servers"></table></div>
           <button type="button" class="link small" id="admin-logout">Đăng xuất</button>

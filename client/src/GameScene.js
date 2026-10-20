@@ -12,7 +12,7 @@ import { BEARGER_RIGS } from './rig/bearger.js';
 const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
-  campfire: 58, firepit: 46, chest: 42, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
+  campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
   rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
@@ -1229,7 +1229,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawDarkness(time) {
-    const a = darknessAt(this.worldT);
+    const a = darknessAt(this.worldT, this.hud.clock);
     if (a < 0.01) {
       this.dark.setVisible(false);
       return;
