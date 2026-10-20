@@ -4,13 +4,15 @@ import {
 } from '../../shared/data.js';
 import { makeTextures } from './textures.js';
 import { Minimap } from './minimap.js';
-import { art, itemSprite, isGolden, GOLD_TINT, SPRITE_URL } from './art.js';
+import { art, itemSprite, isGolden, GOLD_TINT, SPRITE_URL, RIG_URL, rigParts } from './art.js';
+import { DirectionalRig, dirOf } from './rig/directional.js';
+import { BEARGER_RIGS } from './rig/bearger.js';
 
 // Chiều cao hiển thị (pixel thế giới) của từng sprite thật. Hình vẽ bằng code giữ nguyên cỡ.
 const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
-  campfire: 58, firepit: 46, chest: 42, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
+  campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
   rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
@@ -19,6 +21,8 @@ const BOSS_WALK = [0, 1, 2, 1];
 const BEARGER_SCALE = 2.3;
 const BEARGER_BIG = new Set(['bearger_roar', 'bearger_sleep']);
 const BOSSES = new Set(['deerclops', 'bearger']);
+// Bearger ghép mảnh (khi có mảnh hình trong client/public/rig/bearger): thu nhỏ để cao ~130px như sprite.
+const BEARGER_RIG_SCALE = 0.42;
 const ROAR_RATE = { deerclops: 1, bearger: 0.75 }; // Bearger dùng chung tiếng gầm, phát trầm hơn
 // Vụ nổ khi Deerclops đập xuống: 7 khung, tự to dần rồi tan. Khung to nhất (354px) phủ vừa vùng đập.
 const EXPLOSION = [1, 2, 3, 4, 5, 6, 7].map((i) => `explosion_${i}`);
@@ -85,6 +89,9 @@ export class GameScene extends Phaser.Scene {
     for (const name of art.keys()) this.load.image(name, `${SPRITE_URL}${name}.png`);
     for (const [tex, name] of Object.entries(TEX_FROM_SPRITE)) {
       if (art.has(name)) this.load.image(tex, `${SPRITE_URL}${name}.png`);
+    }
+    for (const [name, parts] of rigParts) {
+      for (const key of Object.keys(parts)) this.load.image(`${name}_${key}`, `${RIG_URL}${name}/${key}.png`);
     }
   }
 
@@ -506,6 +513,13 @@ export class GameScene extends Phaser.Scene {
     c.add([shadow, body]);
     c.setSize(56, 40);
     const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1, windupUntil: 0, slamUntil: 0 };
+    // Có mảnh hình thì Bearger dùng bản ghép mảnh 4 hướng; sprite cũ vẫn giữ (ẩn) làm vùng bấm chuột.
+    if (type === 'bearger' && rigParts.has('bearger')) {
+      m.rig = new DirectionalRig(this, BEARGER_RIGS, 0, 0, BEARGER_RIG_SCALE);
+      c.add(m.rig.roots);
+      body.setVisible(false);
+      m.rigDir = 'right';
+    }
     this.mobs.set(id, m);
     if (BOSSES.has(type)) this.roar(x, y, ROAR_RATE[type]);
     return m;
@@ -566,6 +580,10 @@ export class GameScene extends Phaser.Scene {
       case 'hit': {
         const m = this.mobs.get(fx.id);
         if (!m) break;
+        if (m.rig) {
+          m.rig.setTintFill(0xffffff);
+          this.time.delayedCall(90, () => m.c.active && m.rig.clearTint());
+        }
         m.body.setTintFill(0xffffff);
         // Chớp trắng xong thì trả lại màu đỏ nếu chó đang gồng cắn (để vẫn thấy cảnh báo)
         this.time.delayedCall(90, () => m.body.active && (this.time.now < (m.lungeUntil ?? 0) ? m.body.setTint(0xff7060) : m.body.clearTint()));
@@ -626,6 +644,7 @@ export class GameScene extends Phaser.Scene {
         const m = this.mobs.get(fx.id);
         if (m) {
           m.chargeWindUntil = this.time.now + fx.ms;
+          m.aim = [fx.dx, fx.dy];
           m.face = fx.dx < 0 ? -1 : 1;
           this.roar(m.x, m.y, ROAR_RATE.bearger);
         }
@@ -650,6 +669,7 @@ export class GameScene extends Phaser.Scene {
         const m = this.mobs.get(fx.id);
         if (!m) break;
         m.swipeWindUntil = this.time.now + fx.ms;
+        m.aim = [fx.dx, fx.dy];
         m.face = fx.dx < 0 ? -1 : 1;
         const angle = Math.atan2(fx.dy, fx.dx);
         const g = this.add.graphics().setDepth(DARK_DEPTH + 1);
@@ -976,14 +996,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const m of this.mobs.values()) {
-      const ox = m.x;
+      const ox = m.x, oy = m.y;
       m.x += (m.tx - m.x) * lerp;
       m.y += (m.ty - m.y) * lerp;
+      m.vx = m.x - ox;
+      m.vy = m.y - oy;
       if (Math.abs(m.x - ox) > 0.2) m.face = m.x < ox ? -1 : 1;
       const moving = Math.hypot(m.tx - m.x, m.ty - m.y) > 1;
       m.c.setPosition(m.x, m.y).setDepth(m.y);
       m.body.setFlipX(m.face < 0);
       if (m.type === 'deerclops') this.animBoss(m, moving, time);
+      else if (m.rig) this.animBeargerRig(m, moving, time);
       else if (m.type === 'bearger') this.animBearger(m, moving, time);
       else if (time >= (m.lungeUntil ?? 0)) m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1; // đang gồng cắn: để tween thu mình chạy
     }
@@ -1047,6 +1070,22 @@ export class GameScene extends Phaser.Scene {
     if (!art.has(key)) key = 'deerclops';
     if (m.body.texture.key !== key) m.body.setTexture(key);
     m.body.setScale(ART_HEIGHT.deerclops / art.get('deerclops')[1]);
+  }
+
+  // Bearger ghép mảnh: cùng thứ tự ưu tiên như animBearger, nhưng chọn được 4 hướng.
+  // Lúc đánh thì quay theo hướng đánh (m.aim, server gửi kèm), lúc đi thì theo hướng di chuyển; đứng thì giữ hướng cũ.
+  animBeargerRig(m, moving, time) {
+    let anim = 'idle', vec = null;
+    if (time < (m.dashUntil ?? 0)) { anim = 'charge'; vec = m.aim; }
+    else if (time < (m.chargeWindUntil ?? 0)) { anim = 'roar'; vec = m.aim; }
+    else if (time < m.windupUntil || time < m.slamUntil) anim = 'slam';
+    else if (time < (m.swipeWindUntil ?? 0) || time < (m.swipeUntil ?? 0)) { anim = 'swipe'; vec = m.aim; }
+    else if (time < (m.eatUntil ?? 0)) anim = 'eat';
+    else if (moving) { anim = 'walk'; vec = [m.vx, m.vy]; }
+    if (vec && Math.hypot(vec[0], vec[1]) > 0.05) m.rigDir = dirOf(vec[0], vec[1], m.rigDir);
+    m.body.setFlipX(false); // sprite ẩn chỉ để bấm chuột, không cần lật
+    m.rig.set(m.rigDir, anim, time);
+    m.rig.update(time);
   }
 
   // Bearger: lao (charge_0..4) > gồng lao (hét) > gồng đập / đập > gồng cào / cào > ăn > đi > đứng.
@@ -1190,7 +1229,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawDarkness(time) {
-    const a = darknessAt(this.worldT);
+    const a = darknessAt(this.worldT, this.hud.clock);
     if (a < 0.01) {
       this.dark.setVisible(false);
       return;

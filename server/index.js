@@ -67,8 +67,8 @@ const handle = (fn) => (req, res) => {
   }
 };
 
-app.get('/api/admin/servers', requireAdmin, handle(() => worlds.list()));
-app.post('/api/admin/servers', requireAdmin, handle((req) => worlds.create(req.body?.name, req.body?.passcode)));
+app.get('/api/admin/servers', requireAdmin, handle(() => worlds.list(true)));
+app.post('/api/admin/servers', requireAdmin, handle((req) => worlds.create(req.body?.name, req.body?.passcode, req.body?.settings)));
 app.patch('/api/admin/servers/:id', requireAdmin, handle((req) => worlds.update(req.params.id, req.body ?? {})));
 app.delete('/api/admin/servers/:id', requireAdmin, handle((req) => worlds.remove(req.params.id)));
 

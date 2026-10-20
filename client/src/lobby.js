@@ -1,5 +1,10 @@
 // Màn hình sảnh: chọn server, nhập passcode + tên, và bảng quản trị cho admin.
+import {
+  SETTINGS, SETTING_GROUPS, PRESETS, presetSettings, presetOf, sanitizeSettings, settingsHtml,
+} from '../../shared/settings.js';
+
 const $ = (id) => document.getElementById(id);
+const presetLabel = (id) => (id ? `${PRESETS[id].icon} ${PRESETS[id].name}` : '⚙️ Tùy chỉnh');
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -26,6 +31,7 @@ export class Lobby {
     $('admin-login').addEventListener('submit', (e) => { e.preventDefault(); this.adminLogin(); });
     $('admin-logout').addEventListener('click', () => this.adminLogout());
     $('admin-create').addEventListener('submit', (e) => { e.preventDefault(); this.adminCreate(); });
+    this.buildSettingsForm();
 
     this.refresh();
     this.timer = setInterval(() => { if (!$('login').hidden) this.refresh(); }, 5000);
@@ -51,7 +57,7 @@ export class Lobby {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'server-card';
-      btn.innerHTML = `<b>${esc(s.name)}</b><span>Ngày ${s.day} · ${s.online} người online</span>`;
+      btn.innerHTML = `<b>${esc(s.name)}</b><span>Ngày ${s.day} · ${s.online} người online · ${presetLabel(s.preset)}</span>`;
       btn.addEventListener('click', () => this.choose(s));
       el.appendChild(btn);
     }
@@ -171,15 +177,25 @@ export class Lobby {
 
   adminRender(list) {
     const table = $('admin-servers');
-    table.innerHTML = '<tr><th>Server</th><th>Ngày</th><th>Online</th><th>Đổi passcode</th><th></th></tr>';
-    if (!list.length) table.insertAdjacentHTML('beforeend', '<tr><td colspan="5" class="muted">Chưa có server nào.</td></tr>');
+    table.innerHTML = '<tr><th>Server</th><th>Ngày</th><th>Online</th><th>Thông số</th><th>Đổi passcode</th><th></th></tr>';
+    if (!list.length) table.insertAdjacentHTML('beforeend', '<tr><td colspan="6" class="muted">Chưa có server nào.</td></tr>');
     for (const s of list) {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td><b>${esc(s.name)}</b><br><small class="muted">${esc(s.id)}</small></td><td>${s.day}</td><td>${s.online}</td>
+        <td>${presetLabel(s.preset)}<br><button type="button" class="link small">Xem</button></td>
         <td><div class="row"><input maxlength="32" placeholder="Passcode mới"><button type="button" class="small">Lưu</button></div></td>
         <td><button type="button" class="small danger">Xóa</button></td>`;
-      const [save, del] = tr.querySelectorAll('button');
+      const [view, save, del] = tr.querySelectorAll('button');
       const input = tr.querySelector('input');
+      // Xem thông số (chỉ đọc): mở một dòng ngay bên dưới.
+      const info = document.createElement('tr');
+      info.className = 'ws-info';
+      info.hidden = true;
+      info.innerHTML = `<td colspan="6">${settingsHtml(s.settings)}</td>`;
+      view.addEventListener('click', () => {
+        info.hidden = !info.hidden;
+        view.textContent = info.hidden ? 'Xem' : 'Ẩn';
+      });
       save.addEventListener('click', async () => {
         try {
           await this.api('PATCH', `/api/admin/servers/${encodeURIComponent(s.id)}`, { passcode: input.value });
@@ -205,19 +221,91 @@ export class Lobby {
           this.adminStatus(err.message);
         }
       });
-      table.appendChild(tr);
+      table.append(tr, info);
     }
   }
 
   async adminCreate() {
     try {
-      const s = await this.api('POST', '/api/admin/servers', { name: $('new-name').value, passcode: $('new-pass').value });
+      const s = await this.api('POST', '/api/admin/servers', {
+        name: $('new-name').value, passcode: $('new-pass').value, settings: this.readSettings(),
+      });
       $('new-name').value = '';
       $('new-pass').value = '';
+      this.applyPreset('normal');
+      $('ws').open = false;
       this.adminStatus(`Đã tạo "${s.name}".`, true);
       this.adminShow();
     } catch (err) {
       this.adminStatus(err.message);
     }
+  }
+
+  // ---------- Thông số thế giới (form tạo server) ----------
+
+  // Vẽ form từ bảng SETTINGS: mỗi nhóm một khung, mỗi thông số một ô.
+  buildSettingsForm() {
+    $('ws-presets').innerHTML = Object.entries(PRESETS)
+      .map(([id, p]) => `<button type="button" class="small" data-preset="${id}">${p.icon} ${p.name}</button>`).join('');
+    for (const btn of $('ws-presets').querySelectorAll('button')) {
+      btn.addEventListener('click', () => this.applyPreset(btn.dataset.preset));
+    }
+    const field = (s) => {
+      const input = s.type === 'bool' ? `<input type="checkbox" name="${s.key}">`
+        : s.type === 'select' ? `<select name="${s.key}">${Object.entries(s.options).map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>`
+        : `<input type="number" name="${s.key}" min="${s.min}" max="${s.max}" step="${s.step}"><small class="ws-val"></small>`;
+      return `<label class="ws-f ws-${s.type}" data-key="${s.key}"${s.desc ? ` title="${s.desc}"` : ''}>
+        <span>${s.label}${s.desc ? ' ⓘ' : ''}</span><span class="ws-in">${input}</span></label>`;
+    };
+    $('ws-fields').innerHTML = SETTING_GROUPS.map((g) =>
+      `<fieldset><legend>${g.icon} ${g.name}</legend>${SETTINGS.filter((s) => s.group === g.id).map(field).join('')}</fieldset>`).join('');
+    $('ws-fields').addEventListener('input', () => this.syncSettings());
+    // Rời ô số thì kẹp lại vào khoảng hợp lệ cho người nhập thấy giá trị thật sẽ được dùng.
+    $('ws-fields').addEventListener('change', (e) => {
+      if (e.target.type !== 'number') return;
+      e.target.value = this.readSettings()[e.target.name];
+      this.syncSettings();
+    });
+    this.applyPreset('normal');
+  }
+
+  input(key) { return $('ws-fields').querySelector(`[name="${key}"]`); }
+
+  readSettings() {
+    const raw = {};
+    for (const s of SETTINGS) {
+      const el = this.input(s.key);
+      raw[s.key] = s.type === 'bool' ? el.checked : el.value;
+    }
+    return sanitizeSettings(raw);
+  }
+
+  applyPreset(id) {
+    this.wsBase = id;
+    const values = presetSettings(id);
+    for (const s of SETTINGS) {
+      const el = this.input(s.key);
+      if (s.type === 'bool') el.checked = values[s.key];
+      else el.value = values[s.key];
+    }
+    this.syncSettings();
+  }
+
+  // Tô vàng ô khác gói đang chọn, làm mờ ô phụ thuộc thông số đang tắt, ghi tên gói ở tiêu đề.
+  syncSettings() {
+    const cur = this.readSettings();
+    const base = presetSettings(this.wsBase);
+    for (const s of SETTINGS) {
+      const label = $('ws-fields').querySelector(`[data-key="${s.key}"]`);
+      label.classList.toggle('changed', cur[s.key] !== base[s.key]);
+      const off = !!s.needs && !cur[s.needs];
+      label.classList.toggle('off', off);
+      this.input(s.key).disabled = off;
+      const val = label.querySelector('.ws-val');
+      if (val) val.textContent = s.zero && cur[s.key] === 0 ? s.zero : s.unit; // đơn vị, hoặc nghĩa của số 0
+    }
+    for (const b of $('ws-presets').querySelectorAll('button')) b.classList.toggle('on', b.dataset.preset === this.wsBase);
+    const match = presetOf(cur);
+    $('ws-current').textContent = match ? PRESETS[match].name : `Tùy chỉnh (từ gói ${PRESETS[this.wsBase].name})`;
   }
 }

@@ -27,6 +27,22 @@ export async function loadArt() {
   }
 }
 
+// Nhân vật ghép mảnh (rig): tên -> parts.json ({ p0: { w, h }, ... }). Chỉ có khi đã chạy
+// `node tools/extract-rig.mjs` trên máy (mảnh hình không commit / deploy); không có thì game dùng sprite thường.
+export const RIG_URL = `${import.meta.env.BASE_URL}rig/`;
+export const rigParts = new Map();
+
+export async function loadRigs(names) {
+  await Promise.all(names.map(async (name) => {
+    try {
+      const res = await fetch(`${RIG_URL}${name}/parts.json`);
+      if (res.ok) rigParts.set(name, await res.json());
+    } catch {
+      // Không có mảnh (hoặc trả về trang khác): dùng sprite thường.
+    }
+  }));
+}
+
 export function itemSprite(id) {
   const key = ITEM_OVERRIDES[id] ?? id;
   return art.has(key) ? key : null;

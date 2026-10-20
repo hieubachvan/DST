@@ -3,11 +3,11 @@ import { io } from 'socket.io-client';
 import { GameScene } from './GameScene.js';
 import { Hud } from './hud.js';
 import { Lobby } from './lobby.js';
-import { loadArt } from './art.js';
+import { loadArt, loadRigs } from './art.js';
 import './style.css';
 
 // Nạp danh sách sprite trước, vì giao diện cần biết món nào có hình.
-await loadArt();
+await Promise.all([loadArt(), loadRigs(['bearger'])]);
 
 const socket = io();
 const hud = new Hud(socket);
@@ -43,6 +43,7 @@ socket.on('init', (init) => {
   if (game) return;
   lobby.joined();
   hud.serverName = init.serverName;
+  hud.setWorld(init.settings);
   document.getElementById('login').hidden = true;
   hud.show();
   game = new Phaser.Game({

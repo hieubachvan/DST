@@ -46,6 +46,10 @@ export function openDb() {
       updated_at INTEGER NOT NULL
     );
   `);
+  // Thông số thế giới (JSON) chọn lúc tạo server. DB cũ chưa có cột này thì thêm vào; server cũ để trống = mặc định.
+  if (!db.prepare('PRAGMA table_info(servers)').all().some((c) => c.name === 'settings')) {
+    db.exec('ALTER TABLE servers ADD COLUMN settings TEXT');
+  }
   return db;
 }
 
