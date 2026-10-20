@@ -50,5 +50,7 @@ export class DirectionalRig {
   get y() { return this.rig.root.y; }
   showJoints(on) { for (const r of Object.values(this.rigs)) r.showJoints(on); }
   setTintFill(color) { for (const r of Object.values(this.rigs)) r.setTintFill(color); }
+  setTint(color) { for (const r of Object.values(this.rigs)) r.setTint(color); }
+  destroy() { for (const r of Object.values(this.rigs)) r.destroy(); }
   clearTint() { for (const r of Object.values(this.rigs)) r.clearTint(); }
 }

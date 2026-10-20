@@ -149,7 +149,7 @@ export class WorldManager {
     const game = this.load(id);
     if (!game) return { error: 'Server không tồn tại.' };
     this.emptySince.delete(id);
-    return { game, player: game.join(socket, data?.name, data?.token) };
+    return { game, player: game.join(socket, data?.name, data?.token, data?.char) };
   }
 
   unloadIdle() {

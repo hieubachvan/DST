@@ -13,6 +13,13 @@ export const DROP_LIFE = 300; // đồ vứt ngoài đất tự biến mất sau
 export const DAY_END = 120;
 export const DUSK_END = 180;
 
+// Nhân vật chọn được lúc vào game. Chỉ khác hình dáng, kỹ năng và hành động giống hệt nhau.
+// img: ảnh đại diện trên màn hình chọn (đường dẫn trong client/public).
+export const CHARACTERS = {
+  default: { name: 'Mặc định', img: 'sprites/player_idle_down.png' },
+  hero: { name: 'Gã tóc cam', img: 'hero/head_front.png' },
+};
+
 export const PLAYER_SPEED = 200;
 export const MAX_HP = 150;
 export const MAX_HUNGER = 150;

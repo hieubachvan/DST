@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thử nhân vật tự vẽ</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #2b3a24; font: 14px 'Segoe UI', Tahoma, sans-serif; color: #f2ead8; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: #1d1810cc; z-index: 2; }
+    #bar button { background: #4a3a24; color: #f2ead8; border: 1px solid #c9a35a; border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; }
+    #bar button.on { background: #c9a35a; color: #1d1810; }
+    #bar label { margin-left: 10px; }
+    #note { margin-left: auto; opacity: 0.7; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <span>Hướng:</span>
+    <span id="dirs"></span>
+    <span style="margin-left:10px">Hoạt ảnh:</span>
+    <span id="anims"></span>
+    <span style="margin-left:10px">Đồ:</span>
+    <span id="gear"></span>
+    <label><input type="checkbox" id="joints"> Hiện khớp</label>
+    <label>Tốc độ <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1"> <span id="speedv">1×</span></label>
+    <span id="note">WASD: đi 4 hướng · Space / J: đánh · thả phím: đứng thở · Trái: cỡ lớn · Phải: cỡ trong game</span>
+  </div>
+  <script type="module" src="./src/rig/hero-preview.js"></script>
+</body>
+</html>

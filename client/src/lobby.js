@@ -2,6 +2,7 @@
 import {
   SETTINGS, SETTING_GROUPS, PRESETS, presetSettings, presetOf, sanitizeSettings, settingsHtml,
 } from '../../shared/settings.js';
+import { CHARACTERS } from '../../shared/data.js';
 
 const $ = (id) => document.getElementById(id);
 const presetLabel = (id) => (id ? `${PRESETS[id].icon} ${PRESETS[id].name}` : '⚙️ Tùy chỉnh');
@@ -13,7 +14,7 @@ const store = {
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 export class Lobby {
-  // onJoin(serverId, passcode, name) được gọi khi người chơi bấm "Vào thế giới"
+  // onJoin(serverId, passcode, name, char) được gọi khi người chơi bấm "Vào thế giới"
   constructor(onJoin) {
     this.onJoin = onJoin;
     this.selected = null;
@@ -25,6 +26,7 @@ export class Lobby {
       this.submit();
     });
     $('name').value = store.get('ds-name') || '';
+    this.renderChars();
 
     $('admin-open').addEventListener('click', () => this.openAdmin());
     $('admin-close').addEventListener('click', () => { $('admin').hidden = true; this.refresh(); });
@@ -86,10 +88,23 @@ export class Lobby {
     const name = $('name').value.trim();
     if (!passcode) return this.error('Hãy nhập passcode của server.');
     store.set('ds-name', name);
+    const char = this.char;
+    store.set('ds-char', char);
     $('login-status').textContent = 'Đang vào thế giới...';
     $('login-form').querySelector('button[type=submit]').disabled = true;
-    this.onJoin(this.selected.id, passcode, name);
+    this.onJoin(this.selected.id, passcode, name, char);
   }
+
+  // Chọn nhân vật (chỉ khác hình dáng), nhớ lựa chọn lần trước.
+  renderChars() {
+    const saved = store.get('ds-char');
+    const pick = Object.hasOwn(CHARACTERS, saved) ? saved : 'default';
+    $('char-pick').innerHTML = Object.entries(CHARACTERS).map(([id, c]) => `<label>
+      <input type="radio" name="char" value="${id}"${id === pick ? ' checked' : ''} />
+      <img src="${import.meta.env.BASE_URL}${c.img}" alt="" /><span>${esc(c.name)}</span></label>`).join('');
+  }
+
+  get char() { return document.querySelector('#char-pick input:checked')?.value ?? 'default'; }
 
   // Vào thành công: nhớ passcode để lần sau khỏi nhập
   joined() {

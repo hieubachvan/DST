@@ -1,5 +1,5 @@
 import {
-  CHUNK, SPAWN, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
+  CHUNK, SPAWN, CHARACTERS, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
   TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, POISON, biomeAt, phaseAt, fireRadius, densIn,
   coastDist, onLand, clampToLand,
 } from '../shared/data.js';
@@ -527,8 +527,10 @@ export class Game {
 
   // Người chơi được nhận diện bằng mã bí mật do trình duyệt tạo (không phải tên),
   // để người khác gõ trùng tên cũng không lấy được nhân vật.
-  join(socket, name, token) {
+  // char: nhân vật chọn ở màn hình vào game (CHARACTERS), chỉ đổi hình dáng.
+  join(socket, name, token, char) {
     name = String(name || '').trim().slice(0, 16) || 'Người sống sót';
+    char = Object.hasOwn(CHARACTERS, char) ? char : 'default';
     token = TOKEN_RE.test(String(token)) ? String(token) : `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     // Cùng nhân vật đang mở ở tab khác: lưu lại rồi đẩy tab cũ ra
@@ -542,7 +544,7 @@ export class Game {
     const saved = this.saves.get(token);
     const used = new Set([...this.players.values()].map((p) => p.color));
     const p = {
-      id: this.id(), socket, token, name,
+      id: this.id(), socket, token, name, char,
       color: saved && !used.has(saved.color) ? saved.color : COLORS.find((c) => !used.has(c)) ?? COLORS[this.players.size % COLORS.length],
       x: SPAWN.x + rand(-80, 80), y: SPAWN.y + rand(-80, 80),
       ready: false, chunks: new Set(), ccx: null, ccy: null,
@@ -591,7 +593,7 @@ export class Game {
 
   roster() {
     return [...this.players.values()].map((p) => ({
-      id: p.id, name: p.name, color: p.color, days: Math.floor(p.survived / this.dayLen),
+      id: p.id, name: p.name, color: p.color, char: p.char, days: Math.floor(p.survived / this.dayLen),
     }));
   }
 
