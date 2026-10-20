@@ -6,8 +6,12 @@ import { Game } from './game.js';
 import { DATA_DIR, hashSecret, verifySecret } from './db.js';
 import { sanitizeSettings, presetOf } from '../shared/settings.js';
 
+// Thế giới tạo trước khi có thông số kích thước bản đồ đã được khám phá tự do, nên giữ vô hạn.
 const parseSettings = (json) => {
-  try { return sanitizeSettings(json ? JSON.parse(json) : null); } catch { return sanitizeSettings(null); }
+  try {
+    const raw = (json && JSON.parse(json)) || {};
+    return sanitizeSettings({ mapSize: 'infinite', ...raw });
+  } catch { return sanitizeSettings({ mapSize: 'infinite' }); }
 };
 
 const UNLOAD_AFTER_MS = Number(process.env.UNLOAD_AFTER_MS) || 60_000; // vắng người quá 1 phút thì lưu và gỡ khỏi bộ nhớ

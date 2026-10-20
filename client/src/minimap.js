@@ -1,14 +1,15 @@
-import { BIOMES, CHUNK, SPAWN, FIRES, STATIONS, biomeAt } from '../../shared/data.js';
+import { BIOMES, CHUNK, SPAWN, FIRES, STATIONS, DEN_CELL, biomeAt, densIn } from '../../shared/data.js';
 
 const $ = (id) => document.getElementById(id);
 
 // Bán kính khung nhìn của bản đồ (pixel thế giới, tính từ tâm ra mép), từ gần tới xa.
 const RANGES = [1200, 2400, 4800, 9600, 19200, 38400];
 const CELLS = 96; // số ô địa hình theo mỗi cạnh bản đồ
-const HOSTILE = new Set(['spider', 'hound', 'deerclops', 'bearger']);
-const BOSSES = new Set(['deerclops', 'bearger']);
+const HOSTILE = new Set(['spider', 'spiderling', 'spiderqueen', 'hound', 'deerclops', 'bearger']);
+const BOSSES = new Set(['deerclops', 'bearger', 'spiderqueen']);
 const BUILDINGS = new Set([...Object.keys(STATIONS), 'chest', 'icebox', 'tent', 'dryingrack', 'trap']);
 const FONT = 'Segoe UI, Tahoma, sans-serif';
+const DEN_SEARCH = 20000; // tìm ổ Nhện chúa gần nhất trong bán kính này để chỉ hướng
 
 const css = (c) => `#${(c ?? 0xffffff).toString(16).padStart(6, '0')}`;
 
@@ -76,7 +77,7 @@ export class Minimap {
     const seed = this.scene.seed;
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
-        const [r, g, b] = BIOMES[biomeAt(seed, (gx0 + x + 0.5) * cell, (gy0 + y + 0.5) * cell)].color;
+        const [r, g, b] = BIOMES[biomeAt(seed, (gx0 + x + 0.5) * cell, (gy0 + y + 0.5) * cell, this.scene.mapR)].color;
         const i = (y * n + x) * 4;
         img.data[i] = r;
         img.data[i + 1] = g;
@@ -85,6 +86,57 @@ export class Minimap {
       }
     }
     tctx.putImageData(img, 0, 0);
+  }
+
+  // Ổ Nhện chúa quanh mình (tính từ seed nên thấy cả ổ ở vùng chưa ai tới), trong khung nhìn hoặc tối thiểu
+  // DEN_SEARCH để luôn biết ổ gần nhất. Chỉ tính lại khi sang ô lưới ổ khác hoặc đổi mức thu phóng.
+  densNear(me, half) {
+    if (!this.scene.hud.cfg?.spiderQueen) return [];
+    const r = Math.max(half, DEN_SEARCH) + DEN_CELL;
+    const key = `${Math.floor(me.x / DEN_CELL)},${Math.floor(me.y / DEN_CELL)},${r}`;
+    if (key !== this.densKey) {
+      this.densKey = key;
+      this.dens = densIn(this.scene.seed, me.x - r, me.y - r, me.x + r, me.y + r, this.scene.mapR);
+    }
+    return this.dens;
+  }
+
+  // Điểm ở mép bản đồ theo hướng (px, py) nhìn từ tâm, và góc của hướng đó (cho mũi tên chỉ thứ nằm ngoài khung).
+  edgePoint(px, py, size, pad) {
+    const c = size / 2;
+    const dx = px - c, dy = py - c;
+    const t = (c - pad) / Math.max(Math.abs(dx), Math.abs(dy));
+    return [c + dx * t, c + dy * t, Math.atan2(dy, dx)];
+  }
+
+  arrow(x, y, angle, fill, s) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(9 * s, 0);
+    ctx.lineTo(-6 * s, -6 * s);
+    ctx.lineTo(-6 * s, 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawDen(px, py, s) {
+    const ctx = this.ctx;
+    ctx.fillStyle = '#7a1424';
+    ctx.strokeStyle = '#f2f2ea';
+    ctx.lineWidth = 2 * s;
+    ctx.beginPath();
+    ctx.arc(px, py, 9 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    this.label('🕸', px, py + 7 * s, 12 * s, '#ffffff');
   }
 
   draw() {
@@ -149,6 +201,25 @@ export class Minimap {
       }
     }
 
+    // Ổ Nhện chúa: vẽ các ổ trong khung; không ổ nào trong khung thì mũi tên ở mép chỉ tới ổ gần nhất kèm khoảng cách.
+    let nearest = null, nd = Infinity, shown = false;
+    for (const d of this.densNear(me, half)) {
+      const [px, py] = toMap(d.x, d.y);
+      if (inside(px, py)) {
+        this.drawDen(px, py, s);
+        shown = true;
+      }
+      const dd = Math.hypot(d.x - me.x, d.y - me.y);
+      if (dd < nd) { nd = dd; nearest = d; }
+    }
+    if (nearest && !shown) {
+      const [ex, ey, angle] = this.edgePoint(...toMap(nearest.x, nearest.y), size, 16 * s);
+      this.arrow(ex, ey, angle, '#c0283c', s);
+      const c = size / 2;
+      const ly = ey > c ? ey - 12 * s : ey + 20 * s;
+      this.label(`🕸 Ổ nhện ~${Math.round(nd / 100) * 100}`, Math.max(50 * s, Math.min(size - 50 * s, ex)), ly, 11 * s, '#ffb0a0');
+    }
+
     // Quái nguy hiểm ở gần
     ctx.fillStyle = '#e04a3a';
     for (const m of scene.mobs.values()) {
@@ -170,25 +241,10 @@ export class Minimap {
 
       if (!inside(px, py)) {
         // Ở ngoài khung: mũi tên chỉ hướng ở mép bản đồ
-        const c = size / 2, pad = 14 * s;
-        const dx = px - c, dy = py - c;
-        const t = (c - pad) / Math.max(Math.abs(dx), Math.abs(dy));
-        px = c + dx * t;
-        py = c + dy * t;
-        ctx.save();
-        ctx.translate(px, py);
-        ctx.rotate(Math.atan2(dy, dx));
-        ctx.fillStyle = color;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1.5 * s;
-        ctx.beginPath();
-        ctx.moveTo(9 * s, 0);
-        ctx.lineTo(-6 * s, -6 * s);
-        ctx.lineTo(-6 * s, 6 * s);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
+        const c = size / 2;
+        let angle;
+        [px, py, angle] = this.edgePoint(px, py, size, 14 * s);
+        this.arrow(px, py, angle, color, s);
         const ly = py > c ? py - 12 * s : py + 18 * s;
         this.label(info.name, Math.max(30 * s, Math.min(size - 30 * s, px)), ly, 11 * s, '#fff');
         continue;

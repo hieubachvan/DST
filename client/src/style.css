@@ -140,6 +140,10 @@ img { -webkit-user-drag: none; }
 #st-hunger .fill { background: #c48a2a; }
 #st-sanity .fill { background: #8a5ab0; }
 .stat.low { animation: pulse 0.8s infinite alternate; }
+/* Trúng độc: viền và máu chuyển xanh, nhấp nháy */
+#st-hp.poisoned { border-color: #7ee05a; animation: poisoned 0.9s infinite alternate; }
+#st-hp.poisoned .fill { background: linear-gradient(#5aa83a, #6f8a2a); }
+@keyframes poisoned { from { box-shadow: 0 0 4px #7ee05a; } to { box-shadow: 0 0 14px #7ee05a; } }
 @keyframes pulse { to { border-color: #ff4a3a; } }
 
 /* ----- Chế tạo ----- */
@@ -541,6 +545,7 @@ img.ic.sprite { width: 34px; height: 34px; object-fit: contain; display: block; 
 .recipe img.ic.sprite { width: 30px; height: 30px; }
 .g-head img.ic.sprite { width: 40px; height: 40px; }
 img.golden { filter: sepia(1) saturate(5) hue-rotate(-8deg) brightness(1.15); }
+img.venom { filter: sepia(1) saturate(4) hue-rotate(50deg) brightness(1.05); }
 img.mini { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; }
 .slot .cnt, .slot .key, .slot .dur { z-index: 1; }
 .stat.has-badge { overflow: visible; }

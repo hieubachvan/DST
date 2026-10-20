@@ -1,8 +1,9 @@
 import {
   CHUNK, SPAWN, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
-  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, biomeAt, phaseAt, fireRadius,
+  TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, POISON, biomeAt, phaseAt, fireRadius, densIn,
+  coastDist, onLand, clampToLand,
 } from '../shared/data.js';
-import { sanitizeSettings, clockOf } from '../shared/settings.js';
+import { sanitizeSettings, clockOf, mapRadius } from '../shared/settings.js';
 
 const SAVE_EVERY_MS = 30000;
 // Dừng đồng hồ thế giới khi không còn ai online (đặt PAUSE_WHEN_EMPTY=0 để tắt)
@@ -59,6 +60,25 @@ const BOSS_TYPES = {
   },
 };
 const BOSS_BUSY_DELAY = 0.5; // tới lịch mà boss khác đang ở đây thì lùi lại chừng này ngày
+
+// Nhện chúa: ngủ trong ổ (vị trí cố định theo seed, xem denAt), bị đánh thì thức dậy. Không tính là boss theo lịch
+// (không làm Deerclops / Bearger lùi lịch) nhưng có thanh máu như boss khi đã thức.
+// Máu tính lúc thức dậy theo số người trong bán kính wakeRange quanh ổ, nhân cfg.queenHp.
+// Đuổi người chơi tối đa leash quanh ổ; không còn ai thì bò về ổ, đứng yên sleepAfter giây là ngủ lại (hồi đầy máu).
+// Đòn (đều gồng trước để né được):
+//  - Cắn: người trong tầm reach ở nửa phía trước bị cắn + trúng độc.
+//  - Phun độc: người cách spit.min–spit.max thì phun một luồng thẳng dài spit.max, rộng 2·spit.w, trúng thì trúng độc.
+//  - Độc tỏa: cứ burst.every đòn cận chiến thì một lần tỏa độc vòng tròn bán kính burst.r quanh nó.
+// Tụt xuống các mốc summonAt (tỉ lệ máu) thì gọi summonN nhện con.
+// Quanh ổ luôn có babies nhện con (sinh dần mỗi babyEvery giây khi có người chơi trong spawnRange),
+// nhện con đuổi người chơi như nhện thường nhưng không rời ổ quá babyLeash.
+const QUEEN = {
+  hp: 1250, hpPerPlayer: 500, hpMax: 3000, wakeRange: 1200, leash: 900, homeR: 50, sleepAfter: 20,
+  spawnRange: 1500, babies: 4, babyEvery: 20, babyLeash: 550, summonAt: [0.66, 0.33], summonN: 3,
+  bite: { reach: 85, r: 115, windup: 550, dmg: 30, recover: 900 },
+  spit: { min: 170, max: 460, w: 45, windup: 750, dmg: 10, cd: 6000, recover: 1000 },
+  burst: { every: 4, r: 170, windup: 950, dmg: 15, recover: 1300 },
+};
 const ICEBOX_RATE = 0.5; // đồ trong Hộp Đá Lạnh cũ đi bằng chừng này so với bình thường
 const CONTAINERS = new Set(['chest', 'icebox']);
 // Công trình bỏ hoang: không có người chơi nào trong bán kính này suốt cfg.abandonDays ngày (giờ thế giới) thì mục nát,
@@ -103,6 +123,20 @@ const MOBS = {
   beefalo: {
     name: 'bò lông', hp: 500, speed: 130, wander: 30, damage: 30, cooldown: 3000, leash: 500, neutral: true, herd: 350,
     drops: [['meat', 3, 1], ['meat', 1, 0.5]], perPlayer: 3, home: 'rocky', safeFromSpawn: 0,
+  },
+  // Nhện con: canh ổ Nhện chúa (m.den), lại gần là đuổi đánh, ngày cũng như đêm.
+  spiderling: {
+    name: 'nhện con', hp: 50, speed: 165, wander: 30, damage: 7, cooldown: 1500, sight: 300, daySight: 300, leash: 600, hostile: true,
+    drops: [['silk', 1, 0.3], ['monstermeat', 1, 0.3]], perPlayer: 0,
+  },
+  // elite: có thanh máu như boss nhưng không theo lịch boss. poisonImmune: vũ khí độc không có tác dụng.
+  spiderqueen: {
+    name: 'Nhện chúa', hp: QUEEN.hp, speed: 125, wander: 0, sight: 700, daySight: 700, leash: QUEEN.leash, hostile: true,
+    elite: true, poisonImmune: true, perPlayer: 0,
+    drops: [
+      ['silk', 6, 1], ['silk', 2, 0.5], ['monstermeat', 4, 1],
+      ['spider_venom', 2, 1], ['spider_venom', 1, 0.5], ['spider_fang', 1, 1], ['spider_fang', 1, 0.5],
+    ],
   },
   deerclops: {
     name: 'Deerclops', hp: BOSS.hp, speed: 115, wander: 40, sight: 1400, daySight: 1400, leash: 2600, hostile: true, boss: true,
@@ -211,6 +245,7 @@ export class Game {
     this.cfg = sanitizeSettings(settings);
     this.clock = clockOf(this.cfg);
     this.dayLen = this.clock.len;
+    this.mapR = mapRadius(this.cfg); // bán kính đảo; Infinity = thế giới vô hạn
     this.worldId = id;
     this.name = name;
     this.room = `w:${id}`;
@@ -220,6 +255,8 @@ export class Game {
     this.ents = new Map();
     this.fires = new Set();
     this.traps = new Set();
+    this.dens = new Set(); // ổ Nhện chúa
+    this.denCells = new Set(); // ô lưới đã đặt ổ (denAt), để không đặt trùng
     this.mobs = new Map();
     this.respawnQueue = [];
     this.t = Number(process.env.START_TIME) || 15; // START_TIME=200 để thử ban đêm
@@ -302,7 +339,13 @@ export class Game {
       this.ensureChunk(...chunkOf(e.x, e.y)).add(e);
       if (FIRES[e.type]) this.fires.add(e);
       if (e.type === 'trap') this.traps.add(e);
+      if (e.type === 'spiderden') {
+        this.dens.add(e);
+        this.denCells.add(e.cell);
+      }
     }
+    // Thế giới tạo trước khi có Nhện chúa: đặt ổ vào các chunk đã có.
+    for (const key of this.chunks.keys()) this.placeDens(...key.split(',').map(Number));
     this.saves = new Map(Object.entries(data.players ?? {}));
     console.log(`Đã nạp thế giới "${this.name}": ngày ${this.day}, ${this.chunks.size} chunk, ${this.ents.size} vật thể, ${this.saves.size} nhân vật.`);
   }
@@ -326,6 +369,7 @@ export class Game {
     for (let i = 0; i < 450 && placed < ENTS_PER_CHUNK; i++) {
       const x = x0 + rand(0, CHUNK), y = y0 + rand(0, CHUNK);
       if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < 160) continue;
+      if (coastDist(this.seed, this.mapR, x, y) < 25) continue; // không mọc dưới biển hay sát mép nước
       const b = biomeAt(this.seed, x, y);
       if (Math.random() > DENSITY[b]) continue;
       if (!this.spaceFree(x, y, 42)) continue;
@@ -343,7 +387,21 @@ export class Game {
         }
       }
     }
+    this.placeDens(cx, cy);
     return set;
+  }
+
+  // Đặt ổ Nhện chúa nằm trong chunk (cx, cy), dọn cây cỏ ngay chỗ đó cho ổ có chỗ.
+  placeDens(cx, cy) {
+    if (!this.cfg.spiderQueen) return;
+    for (const d of densIn(this.seed, cx * CHUNK, cy * CHUNK, (cx + 1) * CHUNK, (cy + 1) * CHUNK, this.mapR)) {
+      if (this.denCells.has(d.cell)) continue;
+      this.denCells.add(d.cell);
+      for (const e of [...this.entsNear(d.x, d.y, 90)]) {
+        if (RESOURCE[e.type] && dist(e, d) < 90) this.removeEnt(e);
+      }
+      this.addEnt('spiderden', d.x, d.y, { cell: d.cell, queenAt: 0 });
+    }
   }
 
   // Các vật thể trong những chunk quanh điểm (x, y).
@@ -374,6 +432,7 @@ export class Game {
     if (type === 'flower') e.v = Math.floor(Math.random() * 5);
     if (FIRES[type]) this.fires.add(e);
     if (type === 'trap') this.traps.add(e);
+    if (type === 'spiderden') this.dens.add(e);
     this.ents.set(e.id, e);
     this.ensureChunk(...chunkOf(e.x, e.y)).add(e);
     this.emitChunk(e, 'ent:add', pub(e));
@@ -386,6 +445,7 @@ export class Game {
     this.ents.delete(e.id);
     this.fires.delete(e);
     this.traps.delete(e);
+    this.dens.delete(e);
     this.chunks.get(chunkKey(...chunkOf(e.x, e.y)))?.delete(e);
     this.emitChunk(e, 'ent:del', e.id);
   }
@@ -432,7 +492,7 @@ export class Game {
     const offsets = [[0, 45], [55, 25], [-55, 25], [0, -50], [65, -35], [-65, -35], [0, 95], [95, 0], [-95, 0]];
     for (const [dx, dy] of offsets) {
       const x = p.x + dx, y = p.y + dy;
-      if (this.spaceFree(x, y, 36)) return { x, y };
+      if (coastDist(this.seed, this.mapR, x, y) >= 20 && this.spaceFree(x, y, 36)) return { x, y };
     }
     return null;
   }
@@ -536,7 +596,7 @@ export class Game {
   }
 
   sendInv(p) { p.socket.emit('inv', { inv: p.inv, gear: p.gear }); }
-  sendStats(p) { p.socket.emit('me', { hp: p.hp, hunger: p.hunger, sanity: p.sanity, dead: p.dead }); }
+  sendStats(p) { p.socket.emit('me', { hp: p.hp, hunger: p.hunger, sanity: p.sanity, dead: p.dead, poison: !!p.poison }); }
   say(p, text) { this.emit('say', { id: p.id, text }); }
   system(text) { this.emit('chat', { sys: true, text }); }
   fail(p, text) { p.socket.emit('fail'); this.say(p, text); }
@@ -634,6 +694,7 @@ export class Game {
     p.chest = null;
     p.respawnAt = Date.now() + RESPAWN_MS;
     p.sleep = null;
+    p.poison = null;
     for (const b of [...this.booms.values()]) {
       if (b.owner !== p.id) continue;
       this.booms.delete(b.id);
@@ -707,6 +768,13 @@ export class Game {
       p.y += (ty - p.y) * k;
       p.allow = 0;
       p.socket.emit('teleport', { x: p.x, y: p.y });
+    }
+    // Không đi ra biển được (client cũng tự chặn, đây chỉ để chống gian lận).
+    const land = clampToLand(this.seed, this.mapR, p.x, p.y);
+    if (land) {
+      p.x = land.x;
+      p.y = land.y;
+      if (Math.hypot(land.x - tx, land.y - ty) > 8) p.socket.emit('teleport', { x: p.x, y: p.y });
     }
     // Đi ra khỏi lều là thức dậy (bỏ qua gói tin vị trí cũ gửi trước lúc vào lều).
     if (p.sleep && now - p.sleep.at > 600) {
@@ -884,21 +952,25 @@ export class Game {
   }
 
   attackMob(p, m) {
-    this.damageMob(p, m, ITEMS[p.gear.hand?.id]?.damage ?? 10, false);
+    const weapon = ITEMS[p.gear.hand?.id];
+    const killed = this.damageMob(p, m, weapon?.damage ?? 10, false);
+    if (!killed && weapon?.poison) this.poisonMob(m, p);
     this.wear(p);
   }
 
-  // Trả về true nếu quái chết.
-  damageMob(p, m, dmg, ranged) {
+  // Trả về true nếu quái chết. dot: sát thương từ độc (không làm khựng, không tính cận chiến).
+  damageMob(p, m, dmg, ranged, dot = false) {
     const def = MOBS[m.type];
+    if (m.asleep) this.wakeQueen(m, p);
     if (def.meleeMul && !ranged) dmg = Math.round(dmg * def.meleeMul);
     m.hp -= dmg;
     m.target = p.id;
     m.hitAt = Date.now();
-    if (def.boss) p.bossSafeLost = p.safeUntil; // đánh boss thì boss được đánh lại ngay
+    if (def.boss || def.elite) p.bossSafeLost = p.safeUntil; // đánh boss thì boss được đánh lại ngay
     if (m.act?.kind === 'eat') m.act = null; // Bearger đang ăn mà bị đánh thì bỏ ăn
     m.food = null;
-    if (def.stagger) {
+    if (m.type === 'spiderqueen') this.queenHurt(m, p);
+    if (def.stagger && !dot) {
       const now = Date.now();
       if (now - (m.staggered ?? 0) > def.cooldown) {
         m.staggered = now;
@@ -908,12 +980,17 @@ export class Game {
     }
     // Đánh một con bò lông là cả đàn quanh đó lao vào.
     if (def.herd) for (const o of this.mobs.values()) if (o.type === m.type && dist(o, m) < def.herd) o.target = p.id;
-    this.emit('fx', { k: 'hit', id: m.id, n: dmg, by: ranged ? undefined : p.id });
+    this.emit('fx', { k: 'hit', id: m.id, n: dmg, by: ranged ? undefined : p.id, poison: dot || undefined });
     if (m.hp > 0) return false;
     this.mobs.delete(m.id);
-    this.emit('fx', { k: 'die', x: m.x, y: m.y, big: def.boss });
+    this.emit('fx', { k: m.type === 'spiderqueen' ? 'qdie' : 'die', x: m.x, y: m.y, big: def.boss || def.elite });
     for (const [id, n, chance] of def.drops) {
       if (Math.random() < chance) this.spawnDrop(m.x + rand(-40, 40), m.y + rand(-20, 20), { id, count: n });
+    }
+    if (m.type === 'spiderqueen') {
+      const den = this.ents.get(m.den);
+      if (den) den.queenAt = this.t + this.cfg.queenRespawn * this.dayLen;
+      this.system(`👑 ${p.name} đã hạ gục Nhện chúa! Nhặt Độc nhện và Nanh nhện để chế vũ khí độc.`);
     }
     if (def.boss) {
       const b = BOSS_TYPES[m.type];
@@ -927,12 +1004,54 @@ export class Game {
     return true;
   }
 
+  // ---------- Độc ----------
+
+  // Người chơi trúng độc của Nhện chúa: làm mới thời gian độc (không cộng dồn), mạnh theo cfg.poison.
+  poisonPlayer(p, now) {
+    const total = POISON.player * this.cfg.poison;
+    if (p.dead || total <= 0 || !this.bossCanHit(p, now)) return;
+    const had = !!p.poison;
+    p.poison = { until: now + POISON.ms, dps: total / (POISON.ms / 1000) };
+    if (!had) this.say(p, 'Ặc... mình bị trúng độc rồi!');
+    this.sendStats(p);
+  }
+
+  // Quái trúng vũ khí độc của người chơi p. Boss chỉ chịu POISON.bossMul.
+  poisonMob(m, p) {
+    const def = MOBS[m.type];
+    if (def.poisonImmune) return;
+    const total = POISON.mob * (def.boss ? POISON.bossMul : 1);
+    m.poison = { until: Date.now() + POISON.ms, dps: total / (POISON.ms / 1000), by: p.id, acc: 0 };
+    this.emit('fx', { k: 'mpoison', id: m.id, ms: POISON.ms });
+  }
+
+  // Độc trên quái trừ máu dần, gộp lại mỗi 5 máu cho đỡ gửi nhiều. Trả về true nếu quái chết.
+  tickMobPoison(m, dt, now) {
+    const pz = m.poison;
+    if (now >= pz.until) {
+      m.poison = null;
+      return false;
+    }
+    pz.acc += pz.dps * dt;
+    if (pz.acc < 5) return false;
+    const n = Math.floor(pz.acc);
+    pz.acc -= n;
+    const by = this.players.get(pz.by);
+    if (by) return this.damageMob(by, m, n, true, true);
+    // Người gây độc đã thoát: vẫn mất máu, chết thì biến mất không rơi đồ.
+    m.hp -= n;
+    if (m.hp > 0) return false;
+    this.mobs.delete(m.id);
+    this.emit('fx', { k: 'die', x: m.x, y: m.y });
+    return true;
+  }
+
   // ---------- Boomerang ----------
 
   onThrow(p, d) {
     if (p.dead) return;
     const it = p.gear.hand;
-    if (it?.id !== 'boomerang') return;
+    if (!ITEMS[it?.id]?.thrown) return;
     const now = Date.now();
     if (now - p.lastAct < 350 || now < p.stunUntil) return;
     const m = this.mobs.get(Number(d?.id));
@@ -981,7 +1100,8 @@ export class Game {
           if (Math.hypot(gx - b.x, gy - b.y) < BOOMERANG.hitR) {
             b.item.dur -= 1;
             const killed = this.damageMob(owner, m, ITEMS[b.item.id].damage, true);
-            if (!killed && !MOBS[m.type].boss) {
+            if (!killed && ITEMS[b.item.id].poison) this.poisonMob(m, owner);
+            if (!killed && !MOBS[m.type].boss && !MOBS[m.type].elite) {
               m.stunUntil = now + BOOMERANG.stunMs;
               m.lunge = 0; // choáng thì bỏ cú cắn đang gồng
             }
@@ -1050,6 +1170,10 @@ export class Game {
       p.sanity = clamp(p.sanity + f.sanity, 0, MAX_SANITY);
       if (f.health >= 0) p.hp = Math.min(MAX_HP, p.hp + f.health);
       else this.hurt(p, -f.health, 'ngộ độc thức ăn');
+      if (def.cures && p.poison) {
+        p.poison = null;
+        this.say(p, 'Hết độc rồi, nhẹ cả người!');
+      }
       this.sendInv(p);
       this.sendStats(p);
       return;
@@ -1205,6 +1329,22 @@ export class Game {
       this.bossForced = type; // không bị lùi lịch dù boss khác đang ở đây
       return;
     }
+    // /den: dịch chuyển tới gần ổ Nhện chúa gần nhất (tạo chunk xung quanh nếu chưa có)
+    if (process.env.DEV === '1' && text === '/den') {
+      const found = [];
+      for (let r = 1; r <= 8 && !found.length; r++) {
+        found.push(...densIn(this.seed, p.x - r * CHUNK * 2, p.y - r * CHUNK * 2, p.x + r * CHUNK * 2, p.y + r * CHUNK * 2, this.mapR));
+      }
+      const d = found.sort((a, b) => dist(a, p) - dist(b, p))[0];
+      if (!d) return this.fail(p, 'Không tìm thấy ổ nhện nào gần đây.');
+      this.ensureChunk(...chunkOf(d.x, d.y));
+      p.x = d.x;
+      p.y = d.y + 420;
+      p.allow = 0;
+      this.updateChunks(p);
+      p.socket.emit('teleport', { x: p.x, y: p.y });
+      return;
+    }
     if (process.env.DEV === '1' && text.startsWith('/give ')) {
       const [, id, n] = text.split(/\s+/);
       if (ITEMS[id]) this.give(p, id, Math.max(1, Math.min(200, Number(n) || 1)));
@@ -1241,16 +1381,17 @@ export class Game {
 
     const ps = [];
     for (const p of this.players.values()) {
-      ps.push([p.id, Math.round(p.x), Math.round(p.y), p.dead ? 1 : 0, p.gear.hand?.id || 0, p.gear.head?.id || 0, p.gear.body?.id || 0, p.sleep ? 1 : 0, now < p.safeUntil ? 1 : 0, now < p.stunUntil ? 1 : 0]);
+      ps.push([p.id, Math.round(p.x), Math.round(p.y), p.dead ? 1 : 0, p.gear.hand?.id || 0, p.gear.head?.id || 0, p.gear.body?.id || 0, p.sleep ? 1 : 0, now < p.safeUntil ? 1 : 0, now < p.stunUntil ? 1 : 0, p.poison ? 1 : 0]);
     }
     const t = Math.round(this.t * 100) / 100;
     for (const p of this.players.values()) {
       const near = (o) => Math.abs(o.x - p.x) < MOB_VIEW && Math.abs(o.y - p.y) < MOB_VIEW;
       const boss = this.nearestBoss(p);
       const ms = [];
-      for (const m of this.mobs.values()) if (near(m)) ms.push([m.id, m.type, Math.round(m.x), Math.round(m.y)]);
+      // Phần tử thứ 5 của quái: 1 = đang ngủ (Nhện chúa).
+      for (const m of this.mobs.values()) if (near(m)) ms.push([m.id, m.type, Math.round(m.x), Math.round(m.y), m.asleep ? 1 : 0]);
       const bs = [];
-      for (const b of this.booms.values()) if (near(b)) bs.push([b.id, Math.round(b.x), Math.round(b.y), b.owner]);
+      for (const b of this.booms.values()) if (near(b)) bs.push([b.id, Math.round(b.x), Math.round(b.y), b.owner, b.item.id]);
       const snap = { t, p: ps, m: ms, b: bs };
       if (boss && near(boss)) snap.bo = [boss.id, Math.max(0, Math.round(boss.hp)), boss.maxHp, MOBS[boss.type].name];
       p.socket.emit('snap', snap);
@@ -1268,6 +1409,16 @@ export class Game {
     p.survived += dt;
     p.hunger = Math.max(0, p.hunger - HUNGER_RATE * this.cfg.hunger * dt);
     if (p.hunger <= 0) this.hurt(p, 1.5 * dt, 'đói', { quiet: true });
+    // Trúng độc: máu tụt đều, bỏ qua giáp, hết giờ thì khỏi.
+    if (p.poison) {
+      if (now >= p.poison.until) {
+        p.poison = null;
+        this.sendStats(p);
+      } else {
+        this.hurt(p, p.poison.dps * dt, 'trúng độc', { quiet: true });
+        if (p.dead) return;
+      }
+    }
 
     // Ngủ trong lều: an toàn trong bóng tối, hồi máu và tinh thần, đói nhanh hơn. Trời sáng thì tự dậy.
     if (p.sleep) {
@@ -1339,9 +1490,12 @@ export class Game {
         this.emit('fx', { k: 'die', x: m.x, y: m.y });
         continue;
       }
+      if (m.poison && this.tickMobPoison(m, dt, now)) continue;
       if (m.stunUntil > now) continue;
       if (m.type === 'bearger') this.updateBearger(m, def, dt, now);
       else if (def.boss) this.updateBoss(m, def, dt, now);
+      else if (m.type === 'spiderqueen') this.updateQueen(m, def, dt, now);
+      else if (m.den) this.updateSpiderling(m, def, dt, now, phase);
       else if (def.hostile) this.updateHostile(m, def, dt, now, phase);
       else if (def.neutral) this.updateNeutral(m, def, dt, now);
       else this.updatePassive(m, def, dt, now);
@@ -1358,6 +1512,12 @@ export class Game {
         a.x -= ux * push; a.y -= uy * push;
         b.x += ux * push; b.y += uy * push;
       }
+    }
+
+    // Quái không xuống biển: đuổi / đi lang thang tới bờ thì bị chặn lại ở mép nước.
+    for (const m of this.mobs.values()) {
+      const land = clampToLand(this.seed, this.mapR, m.x, m.y, 10);
+      if (land) { m.x = land.x; m.y = land.y; }
     }
 
     // Thỏ đi ngang bẫy sẽ bị bắt.
@@ -1421,11 +1581,12 @@ export class Game {
     return null;
   }
 
-  // Boss gần người chơi nhất (cho thanh máu boss khi có nhiều boss cùng lúc).
+  // Boss gần người chơi nhất (cho thanh máu boss khi có nhiều boss cùng lúc). Tính cả Nhện chúa khi đã thức.
   nearestBoss(p) {
     let best = null, bd = Infinity;
     for (const m of this.mobs.values()) {
-      if (!MOBS[m.type].boss) continue;
+      const def = MOBS[m.type];
+      if (!def.boss && !(def.elite && !m.asleep)) continue;
       const d = dist(m, p);
       if (d < bd) { bd = d; best = m; }
     }
@@ -1772,6 +1933,172 @@ export class Game {
     this.chase(m, def, tgt, dt, now);
   }
 
+  // ---------- Nhện chúa & ổ nhện ----------
+
+  // Mỗi giây: ổ có người chơi ở gần thì có Nhện chúa (đang ngủ, nếu chưa bị hạ hoặc đã tới lúc có con mới) và nhện con.
+  // Không ai ở gần thì quái tự bị xóa như mọi quái khác (MOB_DESPAWN), lần sau tới gần lại sinh ra.
+  updateDens() {
+    if (!this.cfg.spiderQueen) return;
+    for (const den of this.dens) {
+      let near = false;
+      for (const p of this.players.values()) if (!p.dead && p.ready && dist(p, den) < QUEEN.spawnRange) { near = true; break; }
+      if (!near) {
+        den.full = false; // không ai ở gần thì quái bị xóa; lần sau tới gần lại sinh đủ đàn ngay
+        continue;
+      }
+      let queen = null, babies = 0;
+      for (const m of this.mobs.values()) {
+        if (m.den !== den.id) continue;
+        if (m.type === 'spiderqueen') queen = m;
+        else babies++;
+      }
+      if (!queen && this.t >= (den.queenAt ?? 0)) {
+        this.spawnMob('spiderqueen', den.x, den.y + 8, { den: den.id, asleep: true, maxHp: QUEEN.hp, idle: 0, act: null, swings: 0 });
+      }
+      if (babies < QUEEN.babies && this.t >= (den.babyAt ?? 0)) {
+        this.spawnBaby(den);
+        if (babies + 1 >= QUEEN.babies) den.full = true;
+        den.babyAt = this.t + (den.full ? QUEEN.babyEvery : 1); // chưa đủ đàn lần nào thì sinh nhanh, sau đó con chết mới sinh lại chậm
+      }
+    }
+  }
+
+  spawnBaby(den, target) {
+    const a = rand(0, Math.PI * 2), r = rand(60, 160);
+    return this.spawnMob('spiderling', den.x + Math.cos(a) * r, den.y + Math.sin(a) * r, { den: den.id, target: target ?? null });
+  }
+
+  // Nhện chúa bị đánh lúc đang ngủ: thức dậy, máu theo số người đang ở quanh ổ.
+  wakeQueen(m, p) {
+    m.asleep = false;
+    const den = this.ents.get(m.den) ?? m;
+    let n = 0;
+    for (const q of this.players.values()) if (!q.dead && dist(q, den) < QUEEN.wakeRange) n++;
+    const hp = Math.round(Math.min(QUEEN.hpMax, QUEEN.hp + QUEEN.hpPerPlayer * (Math.max(1, n) - 1)) * this.cfg.queenHp);
+    m.hp = m.maxHp = hp;
+    m.idle = 0;
+    m.summoned = 0;
+    m.atk = Date.now() + 700; // vừa tỉnh còn ngơ ngác một chút
+    this.emit('fx', { k: 'qwake', id: m.id });
+    this.say(p, 'Nhện chúa thức giấc rồi!');
+  }
+
+  // Nhện chúa bị đánh: nhện con quanh ổ lao vào người đánh; tụt qua các mốc máu thì gọi thêm nhện con.
+  queenHurt(m, p) {
+    for (const o of this.mobs.values()) if (o.den === m.den && o !== m && dist(o, p) < QUEEN.babyLeash) o.target = p.id;
+    const den = this.ents.get(m.den);
+    while (den && m.hp > 0 && (m.summoned ?? 0) < QUEEN.summonAt.length && m.hp / m.maxHp <= QUEEN.summonAt[m.summoned ?? 0]) {
+      m.summoned = (m.summoned ?? 0) + 1;
+      for (let i = 0; i < QUEEN.summonN; i++) this.spawnBaby(den, p.id);
+      this.emit('fx', { k: 'qsummon', id: m.id });
+    }
+  }
+
+  // Nhện chúa: lúc ngủ thì nằm yên; thức thì đuổi người chơi quanh ổ, mỗi lúc làm một đòn (m.act) có gồng trước.
+  updateQueen(m, def, dt, now) {
+    if (m.asleep) return;
+    const Q = QUEEN;
+    const den = this.ents.get(m.den);
+    const a = m.act;
+    if (a) {
+      if (now < a.at) return;
+      m.act = null;
+      this.queenStrike(m, a, now);
+      return;
+    }
+
+    let tgt = this.bossTarget(m, def, now);
+    if (tgt && den && dist(tgt, den) > Q.leash) {
+      tgt = null;
+      m.target = null;
+    }
+    if (!tgt) {
+      // Về ổ, nằm yên một lúc thì ngủ lại và hồi đầy máu.
+      const home = den ?? m;
+      const d = dist(m, home);
+      if (d > Q.homeR) {
+        m.x += ((home.x - m.x) / d) * def.speed * dt;
+        m.y += ((home.y - m.y) / d) * def.speed * dt;
+      } else if ((m.idle += dt) > Q.sleepAfter) {
+        m.asleep = true;
+        m.hp = m.maxHp;
+        m.poison = null;
+        this.emit('fx', { k: 'qsleep', id: m.id });
+      }
+      return;
+    }
+    m.idle = 0;
+    const dx = tgt.x - m.x, dy = tgt.y - m.y, d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d, uy = dy / d;
+    if (now >= m.atk) {
+      let act = null;
+      if (d <= Q.bite.reach) {
+        m.swings = (m.swings ?? 0) + 1;
+        act = m.swings % Q.burst.every === 0
+          ? { kind: 'burst', at: now + Q.burst.windup, r: Q.burst.r }
+          : { kind: 'bite', at: now + Q.bite.windup, dx: ux, dy: uy, r: Q.bite.r };
+      } else if (d >= Q.spit.min && d <= Q.spit.max && now >= (m.spitAt ?? 0)) {
+        act = { kind: 'spit', at: now + Q.spit.windup, x: m.x, y: m.y, dx: ux, dy: uy, len: Q.spit.max, w: Q.spit.w };
+      }
+      if (act) {
+        m.act = act;
+        this.emit('fx', {
+          k: 'qwind', id: m.id, kind: act.kind, ms: act.at - now, x: Math.round(m.x), y: Math.round(m.y),
+          dx: +ux.toFixed(3), dy: +uy.toFixed(3), r: act.r, len: act.len, w: act.w,
+        });
+        return;
+      }
+    }
+    if (d > Q.bite.reach * 0.8) {
+      m.x += ux * def.speed * dt;
+      m.y += uy * def.speed * dt;
+    }
+  }
+
+  // Ra đòn sau khi gồng xong: ai trong vùng thì mất máu (qua giáp) và trúng độc (bỏ qua giáp).
+  queenStrike(m, a, now) {
+    const Q = QUEEN;
+    const hit = (p, dmg) => {
+      if (!this.bossCanHit(p, now)) return;
+      this.bossHit(p, m, dmg, now);
+      this.poisonPlayer(p, now);
+    };
+    for (const p of this.players.values()) {
+      if (p.dead) continue;
+      const dx = p.x - m.x, dy = p.y - m.y;
+      if (a.kind === 'bite') {
+        if (Math.hypot(dx, dy) < Q.bite.r && dx * a.dx + dy * a.dy > -20) hit(p, Q.bite.dmg); // chỉ nửa phía trước
+      } else if (a.kind === 'burst') {
+        if (Math.hypot(dx, dy) < Q.burst.r) hit(p, Q.burst.dmg);
+      } else if (a.kind === 'spit') {
+        // Khoảng cách tới đường phun (tính từ chỗ đứng lúc gồng).
+        const px = p.x - a.x, py = p.y - a.y;
+        const along = px * a.dx + py * a.dy, across = Math.abs(px * a.dy - py * a.dx);
+        if (along > 0 && along < a.len && across < a.w) hit(p, Q.spit.dmg);
+      }
+    }
+    if (a.kind === 'spit') m.spitAt = now + Q.spit.cd;
+    m.atk = now + Q[a.kind].recover;
+    this.emit('fx', {
+      k: 'qatk', id: m.id, kind: a.kind, x: Math.round(a.x ?? m.x), y: Math.round(a.y ?? m.y),
+      dx: a.dx, dy: a.dy, r: a.r, len: a.len,
+    });
+  }
+
+  // Nhện con: như nhện thường nhưng không rời ổ quá babyLeash, đi xa thì quay về.
+  updateSpiderling(m, def, dt, now, phase) {
+    const den = this.ents.get(m.den);
+    const d = den ? dist(m, den) : 0;
+    if (den && d > QUEEN.babyLeash) {
+      m.target = null;
+      m.lunge = 0;
+      m.x += ((den.x - m.x) / d) * def.speed * dt;
+      m.y += ((den.y - m.y) / d) * def.speed * dt;
+      return;
+    }
+    this.updateHostile(m, def, dt, now, phase);
+  }
+
   // Lợn, bò lông: hiền, chỉ đuổi đánh người vừa đánh nó cho tới khi người đó chạy xa.
   updateNeutral(m, def, dt, now) {
     const tgt = m.target ? this.players.get(m.target) : null;
@@ -1878,6 +2205,7 @@ export class Game {
     const phase = phaseAt(this.t, this.clock);
     this.updateHounds();
     this.updateBossSchedule();
+    this.updateDens();
     this.slowCount = (this.slowCount ?? 0) + 1;
     if (this.slowCount % 10 === 0) this.emit('roster', this.roster()); // cập nhật số ngày sống sót mỗi 10 giây
 
@@ -1923,7 +2251,7 @@ export class Game {
         for (let i = 0; i < 10; i++) {
           const a = rand(0, Math.PI * 2), r = rand(800, 1300);
           const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
-          if (biomeAt(this.seed, x, y) !== def.home) continue;
+          if (biomeAt(this.seed, x, y, this.mapR) !== def.home) continue;
           if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < def.safeFromSpawn) continue;
           if ([...this.players.values()].some((q) => Math.hypot(q.x - x, q.y - y) < 600)) continue;
           this.spawnMob(type, x, y, { resident: true });
@@ -1939,8 +2267,8 @@ export class Game {
         let near = 0;
         for (const m of this.mobs.values()) if (m.type === 'spider' && dist(m, p) < 900) near++;
         if (near >= 3) continue;
-        const a = rand(0, Math.PI * 2);
-        this.spawnMob('spider', p.x + Math.cos(a) * 600, p.y + Math.sin(a) * 600, { nightOnly: true });
+        const a = rand(0, Math.PI * 2), x = p.x + Math.cos(a) * 600, y = p.y + Math.sin(a) * 600;
+        if (onLand(this.seed, this.mapR, x, y)) this.spawnMob('spider', x, y, { nightOnly: true });
       }
     }
   }

@@ -715,6 +715,166 @@
   97,
   57
  ],
+ "spiderqueen": [
+  90,
+  82
+ ],
+ "spiderqueen_down_0": [
+  104,
+  76
+ ],
+ "spiderqueen_down_1": [
+  100,
+  77
+ ],
+ "spiderqueen_down_2": [
+  103,
+  76
+ ],
+ "spiderqueen_down_3": [
+  102,
+  75
+ ],
+ "spiderqueen_up_0": [
+  89,
+  89
+ ],
+ "spiderqueen_up_1": [
+  86,
+  89
+ ],
+ "spiderqueen_up_2": [
+  88,
+  89
+ ],
+ "spiderqueen_up_3": [
+  90,
+  89
+ ],
+ "spiderqueen_idle_0": [
+  90,
+  82
+ ],
+ "spiderqueen_idle_1": [
+  92,
+  77
+ ],
+ "spiderqueen_idle_2": [
+  90,
+  76
+ ],
+ "spiderqueen_idle_3": [
+  98,
+  77
+ ],
+ "spiderqueen_left_0": [
+  96,
+  71
+ ],
+ "spiderqueen_left_1": [
+  101,
+  72
+ ],
+ "spiderqueen_left_2": [
+  100,
+  72
+ ],
+ "spiderqueen_left_3": [
+  99,
+  70
+ ],
+ "spiderqueen_right_0": [
+  99,
+  75
+ ],
+ "spiderqueen_right_1": [
+  96,
+  74
+ ],
+ "spiderqueen_right_2": [
+  95,
+  75
+ ],
+ "spiderqueen_right_3": [
+  98,
+  73
+ ],
+ "spiderqueen_burst_0": [
+  95,
+  75
+ ],
+ "spiderqueen_burst_1": [
+  96,
+  75
+ ],
+ "spiderqueen_burst_2": [
+  103,
+  77
+ ],
+ "spiderqueen_burst_3": [
+  102,
+  78
+ ],
+ "spiderqueen_spit_0": [
+  98,
+  80
+ ],
+ "spiderqueen_spit_1": [
+  96,
+  77
+ ],
+ "spiderqueen_spit_2": [
+  94,
+  86
+ ],
+ "spiderqueen_spit_3": [
+  116,
+  90
+ ],
+ "spiderqueen_bite_0": [
+  104,
+  76
+ ],
+ "spiderqueen_bite_1": [
+  115,
+  77
+ ],
+ "spiderqueen_bite_2": [
+  109,
+  77
+ ],
+ "spiderqueen_bite_3": [
+  90,
+  71
+ ],
+ "spiderqueen_bite_4": [
+  101,
+  69
+ ],
+ "spiderqueen_hurt_0": [
+  103,
+  82
+ ],
+ "spiderqueen_hurt_1": [
+  100,
+  74
+ ],
+ "spiderqueen_die_0": [
+  97,
+  75
+ ],
+ "spiderqueen_die_1": [
+  102,
+  61
+ ],
+ "spiderqueen_die_2": [
+  104,
+  52
+ ],
+ "spiderqueen_die_3": [
+  100,
+  54
+ ],
  "player_suit_idle_down": [
   66,
   105

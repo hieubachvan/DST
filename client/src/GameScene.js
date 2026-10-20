@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import {
   ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, BOOMERANG, biomeAt, fireRadius, darknessAt,
+  SHORE_COLORS, SHORE_W, coastDist, clampToLand,
 } from '../../shared/data.js';
+import { mapRadius } from '../../shared/settings.js';
 import { makeTextures } from './textures.js';
 import { Minimap } from './minimap.js';
-import { art, itemSprite, isGolden, GOLD_TINT, SPRITE_URL, RIG_URL, rigParts } from './art.js';
+import { art, itemSprite, itemTint, SPRITE_URL, RIG_URL, rigParts } from './art.js';
 import { DirectionalRig, dirOf } from './rig/directional.js';
 import { BEARGER_RIGS } from './rig/bearger.js';
 
@@ -13,9 +15,12 @@ const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
   campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
-  rabbit: 34, spider: 46, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
+  rabbit: 34, spider: 46, spiderling: 32, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
+// Nhện chúa: mọi khung trên tấm hình cao ~74px, phóng chung một tỉ lệ để cao ~95px (gấp đôi nhện thường).
+const QUEEN_SCALE = 1.3;
+const POISON_TINT = 0x9be36a; // màu nhuộm khi trúng độc (quái, người chơi, boomerang độc)
 // Bearger: khung trên tấm hình nhỏ (~55px) nên phóng chung một tỉ lệ để hình không co giãn giữa các khung;
 // Roar / Sleep vẽ to hơn lưới chính ~1.6 lần nên phóng ít hơn.
 const BEARGER_SCALE = 2.3;
@@ -35,7 +40,7 @@ const PICK_SOUNDS = {
   sapling: 'twig', grass: 'rustle', flower: 'rustle', bush: 'rustle', carrot: 'rustle', flint: 'pickup', drop: 'pickup',
 };
 // Texture trong game lấy từ sprite có tên khác
-const TEX_FROM_SPRITE = { sapling: 'dead_tree', hound: 'hound_dir_0' };
+const TEX_FROM_SPRITE = { sapling: 'dead_tree', hound: 'hound_dir_0', spiderling: 'spider' };
 const RUN_FRAMES = ['player_run1', 'player_run2', 'player_run3', 'player_run2'];
 
 // Hoạt ảnh 8 hướng: hướng nhìn -> [tên khung gốc, lật ngang]. Hướng bên trái = lật hình bên phải.
@@ -68,12 +73,15 @@ const DARK_DEPTH = 1e9;
 const UI_DEPTH = 2e9;
 const REPEAT_TYPES = new Set(['tree', 'boulder']);
 const STRUCTURES = new Set(RECIPES.filter((r) => r.place).map((r) => r.id));
-const MOB_NAMES = { spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops', bearger: 'Bearger' };
-const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3.2 };
+const MOB_NAMES = {
+  spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops', bearger: 'Bearger',
+  spiderling: 'Nhện con', spiderqueen: 'Nhện chúa',
+};
+const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3.2, spiderling: 0.9, spiderqueen: 2.6 };
 const DIGGABLE = new Set(['sapling', 'grass', 'bush']);
 const NAMES = {
   tree: 'Cây thông', boulder: 'Tảng đá', sapling: 'Cây non', grass: 'Bụi cỏ', bush: 'Bụi quả mọng',
-  flower: 'Hoa', flint: 'Đá lửa', carrot: 'Cà rốt',
+  flower: 'Hoa', flint: 'Đá lửa', carrot: 'Cà rốt', spiderden: 'Ổ Nhện chúa',
   ...Object.fromEntries(RECIPES.filter((r) => r.place).map((r) => [r.id, r.name])),
 };
 const PICK_LABELS = {
@@ -135,6 +143,7 @@ export class GameScene extends Phaser.Scene {
     this.zoom = 1;
 
     this.seed = init.seed;
+    this.mapR = mapRadius(init.settings); // bán kính đảo, Infinity = vô hạn
     this.grounds = new Map(); // "cx,cy" -> ảnh mặt đất của chunk
     this.noise = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'gnoise')
       .setOrigin(0).setDepth(GROUND_DEPTH + 1);
@@ -230,7 +239,7 @@ export class GameScene extends Phaser.Scene {
   onSnap(snap) {
     this.worldT = snap.t;
     const seen = new Set();
-    for (const [id, x, y, dead, eq, head, body, asleep, safe, stunned] of snap.p) {
+    for (const [id, x, y, dead, eq, head, body, asleep, safe, stunned, poisoned] of snap.p) {
       seen.add(id);
       let pl = this.players.get(id);
       if (!pl) {
@@ -247,18 +256,20 @@ export class GameScene extends Phaser.Scene {
       pl.asleep = !!asleep;
       pl.safe = !!safe;
       pl.stunned = !!stunned;
+      pl.poisoned = !!poisoned;
     }
     for (const [id, pl] of this.players) {
       if (!seen.has(id) && id !== this.myId) this.destroyPlayer(pl);
     }
 
     const seenMobs = new Set();
-    for (const [id, type, x, y] of snap.m) {
+    for (const [id, type, x, y, asleep] of snap.m) {
       seenMobs.add(id);
       let m = this.mobs.get(id);
-      if (!m) m = this.makeMob(id, type, x, y);
+      if (!m) m = this.makeMob(id, type, x, y, !!asleep);
       m.tx = x;
       m.ty = y;
+      m.asleep = !!asleep;
     }
     for (const [id, m] of this.mobs) {
       if (!seenMobs.has(id)) {
@@ -270,13 +281,14 @@ export class GameScene extends Phaser.Scene {
 
     const seenBooms = new Set();
     let mine = false;
-    for (const [id, x, y, owner] of snap.b ?? []) {
+    for (const [id, x, y, owner, item] of snap.b ?? []) {
       seenBooms.add(id);
       if (owner === this.myId) mine = true;
       let b = this.booms.get(id);
       if (!b) {
         const img = this.add.image(x, y, 'boomerang');
         img.setScale(30 / img.height);
+        if (ITEMS[item]?.poison) img.setTint(POISON_TINT);
         b = { img, x, y, tx: x, ty: y };
         this.booms.set(id, b);
       }
@@ -313,7 +325,7 @@ export class GameScene extends Phaser.Scene {
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
         const gx = cx * n + x, gy = cy * n + y;
-        const [r, g, b] = BIOMES[biomeAt(this.seed, gx * S + S / 2, gy * S + S / 2)].color;
+        const [r, g, b] = this.groundColor(gx * S + S / 2, gy * S + S / 2);
         const v = (hash(this.seed + 99, gx, gy) - 0.5) * 16;
         const i = (y * n + x) * 4;
         img.data[i] = r + v;
@@ -325,6 +337,16 @@ export class GameScene extends Phaser.Scene {
     ctx.putImageData(img, 0, 0);
     tex.refresh();
     return this.add.image(cx * CHUNK, cy * CHUNK, key).setOrigin(0).setScale(S).setDepth(GROUND_DEPTH);
+  }
+
+  // Màu mặt đất: biome, riêng quanh bờ biển có dải cát và nước nông chuyển dần sang nước sâu.
+  groundColor(x, y) {
+    const d = coastDist(this.seed, this.mapR, x, y);
+    if (d >= SHORE_W * 0.6) return BIOMES[biomeAt(this.seed, x, y)].color;
+    if (d >= 0) return SHORE_COLORS.sand;
+    const t = Math.min(1, -d / (SHORE_W * 4));
+    const a = SHORE_COLORS.shallow, b = BIOMES.ocean.color;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   }
 
   addChunk({ cx, cy, ents }) {
@@ -389,7 +411,7 @@ export class GameScene extends Phaser.Scene {
         : this.add.text(0, 0, '', { fontSize: '22px', fontFamily: FONT }).setOrigin(0.5, 1);
       if (key) this.applyArt(pic, key);
       pic.setScale(key ? ART_HEIGHT.item / pic.height : 1);
-      if (key && isGolden(e.item.id)) pic.setTint(GOLD_TINT);
+      if (key && itemTint(e.item.id)) pic.setTint(itemTint(e.item.id));
       const count = this.add.text(10, 2, '', {
         fontSize: '12px', fontFamily: FONT, color: '#ffffff', stroke: '#000000', strokeThickness: 3, fontStyle: 'bold',
       }).setOrigin(0, 1);
@@ -505,14 +527,14 @@ export class GameScene extends Phaser.Scene {
     if (this.hover?.o === pl) this.setHover(null);
   }
 
-  makeMob(id, type, x, y) {
+  makeMob(id, type, x, y, asleep = false) {
     const c = this.add.container(x, y);
     const shadow = this.add.image(0, 2, 'shadow').setScale(MOB_SHADOW[type] ?? 1.3);
     const body = this.add.image(0, 0, type).setOrigin(0.5, 0.9);
     this.applyArt(body, type);
     c.add([shadow, body]);
-    c.setSize(56, 40);
-    const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1, windupUntil: 0, slamUntil: 0 };
+    c.setSize(type === 'spiderqueen' ? 110 : 56, type === 'spiderqueen' ? 70 : 40);
+    const m = { id, type, c, body, x, y, tx: x, ty: y, face: 1, windupUntil: 0, slamUntil: 0, asleep };
     // Có mảnh hình thì Bearger dùng bản ghép mảnh 4 hướng; sprite cũ vẫn giữ (ẩn) làm vùng bấm chuột.
     if (type === 'bearger' && rigParts.has('bearger')) {
       m.rig = new DirectionalRig(this, BEARGER_RIGS, 0, 0, BEARGER_RIG_SCALE);
@@ -523,6 +545,14 @@ export class GameScene extends Phaser.Scene {
     this.mobs.set(id, m);
     if (BOSSES.has(type)) this.roar(x, y, ROAR_RATE[type]);
     return m;
+  }
+
+  // Màu của quái: đỏ khi chó săn đang gồng cắn (cảnh báo), xanh khi đang trúng độc, còn lại màu gốc.
+  mobTint(m) {
+    const now = this.time.now;
+    if (now < (m.lungeUntil ?? 0)) m.body.setTint(0xff7060);
+    else if (now < (m.poisonUntil ?? 0)) m.body.setTint(POISON_TINT);
+    else m.body.clearTint();
   }
 
   // Phát tiếng tại điểm (x, y) trong thế giới: càng xa nhân vật mình càng nhỏ.
@@ -584,10 +614,114 @@ export class GameScene extends Phaser.Scene {
           m.rig.setTintFill(0xffffff);
           this.time.delayedCall(90, () => m.c.active && m.rig.clearTint());
         }
+        if (fx.poison) {
+          // Độc trừ máu: chỉ hiện số màu xanh, không chớp trắng
+          this.floatText(m.x, m.y - 40, `-${fx.n}`, '#9be36a');
+          break;
+        }
         m.body.setTintFill(0xffffff);
-        // Chớp trắng xong thì trả lại màu đỏ nếu chó đang gồng cắn (để vẫn thấy cảnh báo)
-        this.time.delayedCall(90, () => m.body.active && (this.time.now < (m.lungeUntil ?? 0) ? m.body.setTint(0xff7060) : m.body.clearTint()));
-        this.floatText(m.x, m.y - 40, `-${fx.n}`, '#ffe08a');
+        // Chớp trắng xong thì trả lại màu cũ (đỏ khi chó đang gồng cắn, xanh khi đang trúng độc)
+        this.time.delayedCall(90, () => m.body.active && this.mobTint(m));
+        if (m.type === 'spiderqueen' && this.time.now >= (m.qWind?.until ?? 0)) m.hurtUntil = this.time.now + 220;
+        this.floatText(m.x, m.y - (m.type === 'spiderqueen' ? 90 : 40), `-${fx.n}`, '#ffe08a');
+        break;
+      }
+      case 'mpoison': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.poisonUntil = this.time.now + fx.ms;
+        this.mobTint(m);
+        this.time.delayedCall(fx.ms + 50, () => m.body.active && this.mobTint(m));
+        break;
+      }
+      // Nhện chúa
+      case 'qwake': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        m.asleep = false;
+        this.floatText(m.x, m.y - 110, 'Nhện chúa thức giấc!', '#ff8a7a');
+        this.roar(m.x, m.y, 1.6);
+        this.tweens.add({ targets: m.c, scaleX: 1.15, scaleY: 1.15, duration: 160, yoyo: true, repeat: 1 });
+        break;
+      }
+      case 'qsleep': {
+        const m = this.mobs.get(fx.id);
+        if (m) this.floatText(m.x, m.y - 90, 'Zzz...', '#cfd8dc');
+        break;
+      }
+      case 'qsummon': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        this.floatText(m.x, m.y - 110, 'Nhện con ơi, ra đây!', '#ffb0a0');
+        this.roar(m.x, m.y, 1.8);
+        break;
+      }
+      // Gồng đòn: vẽ vùng sẽ trúng độc bằng màu xanh (nằm trên lớp bóng tối để ban đêm vẫn thấy mà né).
+      case 'qwind': {
+        const m = this.mobs.get(fx.id);
+        if (m) {
+          m.qWind = { kind: fx.kind, until: this.time.now + fx.ms, ms: fx.ms };
+          m.aim = [fx.dx, fx.dy];
+        }
+        const depth = DARK_DEPTH + 1;
+        let shapes;
+        if (fx.kind === 'spit') {
+          const angle = Math.atan2(fx.dy, fx.dx);
+          const lane = this.add.rectangle(fx.x, fx.y, fx.len, fx.w * 2, 0x5fd03a, 0.12).setOrigin(0, 0.5).setRotation(angle)
+            .setStrokeStyle(3, 0x7ee05a, 0.9).setDepth(depth);
+          const fill = this.add.rectangle(fx.x, fx.y, fx.len, fx.w * 2, 0x5fd03a, 0.3).setOrigin(0, 0.5).setRotation(angle)
+            .setDepth(depth).setScale(0, 1);
+          this.tweens.add({ targets: fill, scaleX: 1, duration: fx.ms });
+          shapes = [lane, fill];
+        } else if (fx.kind === 'burst') {
+          const ring = this.add.circle(fx.x, fx.y, fx.r, 0x5fd03a, 0.12).setStrokeStyle(3, 0x7ee05a, 0.9).setDepth(depth);
+          const core = this.add.circle(fx.x, fx.y, fx.r, 0x5fd03a, 0.3).setDepth(depth).setScale(0);
+          this.tweens.add({ targets: core, scale: 1, duration: fx.ms });
+          shapes = [ring, core];
+        } else {
+          const angle = Math.atan2(fx.dy, fx.dx);
+          const g = this.add.graphics().setDepth(depth);
+          g.fillStyle(0x5fd03a, 0.22).lineStyle(3, 0x7ee05a, 0.9);
+          g.slice(fx.x, fx.y, fx.r, angle - Math.PI / 2, angle + Math.PI / 2, false).fillPath().strokePath();
+          shapes = [g];
+        }
+        this.time.delayedCall(fx.ms, () => shapes.forEach((s) => s.destroy()));
+        break;
+      }
+      case 'qatk': {
+        const m = this.mobs.get(fx.id);
+        if (m) {
+          m.qWind = null;
+          m.qHit = { kind: fx.kind, until: this.time.now + (fx.kind === 'bite' ? 260 : 400) };
+        }
+        const depth = DARK_DEPTH + 1;
+        if (fx.kind === 'bite') {
+          if (m) this.playAt('chop', m.x, m.y, 0.75);
+        } else if (fx.kind === 'burst') {
+          const wave = this.add.circle(fx.x, fx.y, fx.r * 0.4, 0x7ee05a, 0.45).setStrokeStyle(4, 0xc8ffa8, 0.9).setDepth(depth);
+          this.tweens.add({ targets: wave, scale: 2.5, alpha: 0, duration: 450, onComplete: () => wave.destroy() });
+        } else if (fx.kind === 'spit') {
+          // Giọt độc bay dọc đường phun
+          for (let i = 0; i < 10; i++) {
+            const dot = this.add.circle(fx.x, fx.y - 30, 6 + Math.random() * 5, 0x7ee05a, 0.85).setDepth(depth);
+            const d = fx.len * (0.15 + Math.random() * 0.85);
+            const side = (Math.random() - 0.5) * 50;
+            this.tweens.add({
+              targets: dot, x: fx.x + fx.dx * d - fx.dy * side, y: fx.y - 10 + fx.dy * d + fx.dx * side, alpha: 0,
+              duration: 260 + Math.random() * 200, onComplete: () => dot.destroy(),
+            });
+          }
+        }
+        if (m && fx.kind !== 'bite') this.playAt('rustle', m.x, m.y, 0.6);
+        break;
+      }
+      // Nhện chúa gục: chạy các khung chết tại chỗ rồi mờ dần.
+      case 'qdie': {
+        this.roar(fx.x, fx.y, 2);
+        if (!art.has('spiderqueen_die_0')) break;
+        const img = this.add.image(fx.x, fx.y, 'spiderqueen_die_0').setOrigin(0.5, 0.9).setScale(QUEEN_SCALE).setDepth(fx.y);
+        for (let i = 1; i < 4; i++) this.time.delayedCall(i * 170, () => img.active && img.setTexture(`spiderqueen_die_${i}`));
+        this.tweens.add({ targets: img, alpha: 0, delay: 1800, duration: 1200, onComplete: () => img.destroy() });
         break;
       }
       case 'bite': {
@@ -600,9 +734,9 @@ export class GameScene extends Phaser.Scene {
         const m = this.mobs.get(fx.id);
         if (!m) break;
         m.lungeUntil = this.time.now + fx.ms;
-        m.body.setTint(0xff7060);
+        this.mobTint(m);
         this.tweens.add({ targets: m.c, scaleX: 1.12, scaleY: 0.86, duration: fx.ms, onComplete: () => m.c.active && m.c.setScale(1) });
-        this.time.delayedCall(fx.ms, () => m.body.active && m.body.clearTint());
+        this.time.delayedCall(fx.ms, () => m.body.active && this.mobTint(m));
         break;
       }
       case 'miss': {
@@ -778,7 +912,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   hoverLabel(h) {
-    if (h.kind === 'mob') return `${this.gear.hand?.id === 'boomerang' ? 'Ném boomerang vào' : 'Tấn công'} ${MOB_NAMES[h.o.type] ?? ''}`;
+    if (h.kind === 'mob') {
+      const verb = ITEMS[this.gear.hand?.id]?.thrown ? `Ném ${ITEMS[this.gear.hand.id].name} vào` : 'Tấn công';
+      const sleeping = h.o.asleep ? ' (đang ngủ — đánh là nó thức dậy!)' : '';
+      return `${verb} ${MOB_NAMES[h.o.type] ?? ''}${sleeping}`;
+    }
     if (h.kind === 'player') return this.roster.get(h.o.id)?.name ?? '';
     const e = h.o.e;
     if (STRUCTURES.has(e.type) && this.hasTool('hammer')) return `Đập bỏ ${NAMES[e.type]}`;
@@ -794,6 +932,7 @@ export class GameScene extends Phaser.Scene {
       case 'icebox': return 'Mở Hộp Đá Lạnh (đồ ăn hư chậm gấp đôi)';
       case 'trap': return e.caught ? 'Lấy thỏ trong bẫy' : 'Bẫy thỏ (đang chờ)';
       case 'tent': return `Ngủ trong lều (còn ${e.uses ?? 0} lần) — chạng vạng / ban đêm`;
+      case 'spiderden': return 'Ổ Nhện chúa — nhện con canh quanh ổ, Nhện chúa ngủ bên trong';
       case 'dryingrack': {
         if (!e.dry) return 'Giàn phơi (trống) — chuột phải vào thịt sống để phơi';
         const left = Math.ceil(e.dry.at - this.worldT);
@@ -893,7 +1032,7 @@ export class GameScene extends Phaser.Scene {
     const t = this.target;
     let tx, ty, range;
     // Cầm boomerang (hoặc boomerang đang bay): đứng xa mà ném, chờ nó bay về rồi ném tiếp.
-    const ranged = t.kind === 'mob' && (this.gear.hand?.id === 'boomerang' || this.myBoomFlying);
+    const ranged = t.kind === 'mob' && (ITEMS[this.gear.hand?.id]?.thrown || this.myBoomFlying);
     if (t.kind === 'point') {
       tx = t.x; ty = t.y; range = 6;
     } else if (t.kind === 'mob') {
@@ -969,6 +1108,9 @@ export class GameScene extends Phaser.Scene {
     if (len > 0) {
       me.x += (dx / len) * PLAYER_SPEED * dt;
       me.y += (dy / len) * PLAYER_SPEED * dt;
+      // Ra tới bờ biển thì trượt dọc theo bờ chứ không xuống nước.
+      const land = clampToLand(this.seed, this.mapR, me.x, me.y);
+      if (land) { me.x = land.x; me.y = land.y; }
       if (dx) me.face = dx < 0 ? -1 : 1;
       me.dir = dirFromVector(dx, dy);
     }
@@ -1006,6 +1148,7 @@ export class GameScene extends Phaser.Scene {
       m.c.setPosition(m.x, m.y).setDepth(m.y);
       m.body.setFlipX(m.face < 0);
       if (m.type === 'deerclops') this.animBoss(m, moving, time);
+      else if (m.type === 'spiderqueen') this.animQueen(m, moving, time);
       else if (m.rig) this.animBeargerRig(m, moving, time);
       else if (m.type === 'bearger') this.animBearger(m, moving, time);
       else if (time >= (m.lungeUntil ?? 0)) m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1; // đang gồng cắn: để tween thu mình chạy
@@ -1070,6 +1213,41 @@ export class GameScene extends Phaser.Scene {
     if (!art.has(key)) key = 'deerclops';
     if (m.body.texture.key !== key) m.body.setTexture(key);
     m.body.setScale(ART_HEIGHT.deerclops / art.get('deerclops')[1]);
+  }
+
+  // Nhện chúa: ngủ (nằm bẹp, thở chậm) > ra đòn > gồng đòn > bị đánh > đi (4 hướng) > đứng thở.
+  // Gồng đòn chạy dần các khung đầu, ra đòn hiện khung cuối. Hình cắn quay sang phải, lật ngang khi cắn sang trái.
+  animQueen(m, moving, time) {
+    if (!art.has('spiderqueen')) return;
+    const frame = (pose, n, ms) => `spiderqueen_${pose}_${Math.floor(time / ms) % n}`;
+    const poses = { bite: 5, spit: 4, burst: 4 };
+    let key, flip = false;
+    const aimLeft = (m.aim?.[0] ?? 1) < 0;
+    if (m.asleep) {
+      key = 'spiderqueen_die_3';
+    } else if (m.qHit && time < m.qHit.until) {
+      const n = poses[m.qHit.kind];
+      key = `spiderqueen_${m.qHit.kind}_${n - (m.qHit.kind === 'bite' ? 2 : 1)}`;
+      flip = m.qHit.kind === 'bite' && aimLeft;
+    } else if (m.qWind && time < m.qWind.until) {
+      const n = poses[m.qWind.kind] - (m.qWind.kind === 'bite' ? 2 : 1); // số khung dành cho lúc gồng
+      const p = 1 - (m.qWind.until - time) / m.qWind.ms;
+      key = `spiderqueen_${m.qWind.kind}_${Math.min(n - 1, Math.floor(p * n))}`;
+      flip = m.qWind.kind === 'bite' && aimLeft;
+    } else if (time < (m.hurtUntil ?? 0)) {
+      key = frame('hurt', 2, 110);
+    } else if (moving) {
+      const horiz = Math.abs(m.vx) > Math.abs(m.vy) * 0.8;
+      const dir = horiz ? (m.vx < 0 ? 'left' : 'right') : m.vy < 0 ? 'up' : 'down';
+      key = frame(dir, 4, 130);
+    } else {
+      key = frame('idle', 4, 260);
+    }
+    if (!art.has(key)) key = 'spiderqueen';
+    if (m.body.texture.key !== key) m.body.setTexture(key);
+    m.body.setScale(QUEEN_SCALE).setFlipX(flip);
+    // Ngủ: phồng xẹp nhẹ như đang thở
+    m.c.scaleY = m.asleep ? 1 + Math.sin(time * 0.003) * 0.03 : 1;
   }
 
   // Bearger ghép mảnh: cùng thứ tự ưu tiên như animBearger, nhưng chọn được 4 hướng.
@@ -1174,7 +1352,7 @@ export class GameScene extends Phaser.Scene {
       pl.item.setVisible(!key);
       if (key) {
         if (pl.itemImg.texture.key !== key) pl.itemImg.setTexture(key);
-        if (isGolden(pl.eq)) pl.itemImg.setTint(GOLD_TINT);
+        if (itemTint(pl.eq)) pl.itemImg.setTint(itemTint(pl.eq));
         else pl.itemImg.clearTint();
         pl.itemImg.setScale(30 / pl.itemImg.height).setFlipX(side < 0);
       }
@@ -1199,6 +1377,11 @@ export class GameScene extends Phaser.Scene {
       pl.armor.y = -22 - bob;
       pl.hat.setText(pl.headGear ? ITEMS[pl.headGear]?.icon ?? '' : '');
       pl.hat.y = top + 6 - bob;
+      // Trúng độc: nhuộm xanh (trừ lúc đang chớp đỏ vì bị đánh); hết độc thì trả lại màu gốc.
+      const poisoned = pl.poisoned && time >= pl.hurtUntil;
+      if (poisoned) (pl.sprite ?? pl.body).setTint(POISON_TINT);
+      else if (pl.poisonShown && time >= pl.hurtUntil) this.applyRoster(pl);
+      pl.poisonShown = poisoned;
       const stunned = pl.stunned || (pl === this.me && time < this.stunUntil);
       pl.stars.setVisible(stunned);
       if (stunned) {
