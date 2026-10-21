@@ -25,7 +25,8 @@ export const MAX_HP = 150;
 export const MAX_HUNGER = 150;
 export const MAX_SANITY = 200;
 export const INV_SIZE = 15;
-export const PACK_SIZE = 8; // số ô thêm khi đeo ba lô
+export const PACK_SIZE = 8; // số ô thêm khi đeo ba lô thường
+export const MAX_PACK = 12; // ba lô to nhất (Ba lô da lợn), để giao diện dựng sẵn đủ ô
 export const CHEST_SIZE = 9;
 export const ACT_RANGE = 80;
 
@@ -64,6 +65,7 @@ export const ITEMS = {
   silk: { name: 'Tơ nhện', icon: '🕸️', stack: 40, from: 'Rơi ra khi giết nhện (50%), nhện con, và rất nhiều khi hạ Nhện chúa' },
   spider_venom: { name: 'Độc nhện', icon: '🧪', stack: 20, from: 'Rơi ra khi hạ Nhện chúa (2–3 cái)' },
   spider_fang: { name: 'Nanh nhện', icon: '🦷', stack: 20, from: 'Rơi ra khi hạ Nhện chúa (1–2 cái)' },
+  pigskin: { name: 'Da lợn', icon: '🐷', stack: 20, from: 'Giết lợn ở làng lợn (40%), hoặc đập Nhà lợn bằng búa (2 tấm)' },
   deerclops_eyeball: { name: 'Mắt Deerclops', icon: '👁️', stack: 10, from: 'Rơi ra khi hạ boss Deerclops (2 cái)' },
   bearger_fur: { name: 'Lông Gấu', icon: '🐻', stack: 10, from: 'Rơi ra khi hạ boss Bearger' },
   charcoal: { name: 'Than', icon: '⚫', stack: 40, fuel: 50, from: 'Chuột phải vào Gỗ khi đứng gần lửa đang cháy' },
@@ -88,7 +90,7 @@ export const ITEMS = {
   cookedmorsel: { name: 'Thịt nhỏ nướng', icon: '🍢', stack: 20, perish: 960, food: { hunger: 12, health: 1, sanity: 0 } },
   monstermeat: { name: 'Thịt quái', icon: '🥩', stack: 20, from: 'Rơi ra khi giết nhện, chó săn', perish: 480, food: { hunger: 18, health: -20, sanity: -15 }, cook: 'cookedmonstermeat', dry: 'monsterjerky' },
   cookedmonstermeat: { name: 'Thịt quái nướng', icon: '🍖', stack: 20, perish: 960, food: { hunger: 18, health: -3, sanity: -10 } },
-  meat: { name: 'Thịt', icon: '🍗', stack: 20, from: 'Giết lợn (1) hoặc bò lông (3–4)', perish: 480, food: { hunger: 25, health: 1, sanity: -10 }, cook: 'cookedmeat', dry: 'jerky' },
+  meat: { name: 'Thịt', icon: '🍗', stack: 20, from: 'Giết lợn ở làng lợn (1) hoặc bò lông (3–4)', perish: 480, food: { hunger: 25, health: 1, sanity: -10 }, cook: 'cookedmeat', dry: 'jerky' },
   cookedmeat: { name: 'Thịt nướng', icon: '🍖', stack: 20, perish: 960, food: { hunger: 25, health: 3, sanity: 0 } },
   // Thịt khô: phơi đồ sống ("dry") trên Giàn phơi, mất "dryTime" giây.
   jerky: { name: 'Thịt khô', icon: '🦴', stack: 20, dryTime: 120, food: { hunger: 25, health: 20, sanity: 15 } },
@@ -122,7 +124,10 @@ export const ITEMS = {
   logsuit: { name: 'Giáp gỗ', icon: '🛡️', stack: 1, slot: 'body', armor: 0.8, uses: 315 },
   furarmor: { name: 'Giáp Lông Deerclops', icon: '🧥', stack: 1, slot: 'body', armor: 0.9, uses: 750 },
   helmet: { name: 'Mũ giáp', icon: '⛑️', stack: 1, slot: 'head', armor: 0.75, uses: 250 },
-  backpack: { name: 'Ba lô', icon: '🎒', stack: 1, slot: 'body', pack: true },
+  pighat: { name: 'Mũ da lợn', icon: '🪖', stack: 1, slot: 'head', armor: 0.7, uses: 250 },
+  // "pack": số ô thêm khi đeo; "speed": nhân tốc độ đi khi đeo.
+  backpack: { name: 'Ba lô', icon: '🎒', stack: 1, slot: 'body', pack: PACK_SIZE },
+  piggyback: { name: 'Ba lô da lợn', icon: '🎒', stack: 1, slot: 'body', pack: MAX_PACK, speed: 0.9 },
   garland: { name: 'Vòng hoa', icon: '💐', stack: 1, slot: 'head', sanityRegen: 0.07, uses: 360, burns: true },
 };
 
@@ -154,16 +159,18 @@ export const RECIPES = [
   { id: 'salve', cat: 'survival', needs: { petals: 3, silk: 1 }, desc: 'Hồi 25 máu và chữa khỏi trúng độc.' },
   { id: 'antidote', cat: 'survival', needs: { spider_venom: 1, petals: 2 }, desc: 'Chữa khỏi trúng độc và hồi 40 máu. Làm từ Độc nhện của Nhện chúa.' },
   { id: 'backpack', cat: 'survival', needs: { cutgrass: 4, twigs: 4 }, desc: `Đeo ở ô Giáp, thêm ${PACK_SIZE} ô đồ. Cởi ra thì đồ vẫn nằm trong ba lô.` },
+  { id: 'piggyback', cat: 'survival', station: 'science', needs: { pigskin: 4, silk: 6, rope: 2 }, desc: `Ba lô to: thêm ${MAX_PACK} ô đồ nhưng đeo vào đi chậm hơn 10%.` },
   { id: 'tent', cat: 'survival', name: 'Lều', icon: '⛺', place: true, station: 'science', needs: { silk: 4, twigs: 4, rope: 3 }, desc: `Bấm vào lều lúc chạng vạng hoặc ban đêm để ngủ: an toàn trong bóng tối, hồi máu và tinh thần nhưng đói nhanh hơn. Ngủ được ${TENT_USES} lần.` },
   { id: 'dryingrack', cat: 'survival', name: 'Giàn phơi', icon: '🪝', place: true, station: 'science', needs: { rope: 3, twigs: 2, charcoal: 2 }, desc: 'Đứng gần giàn, chuột phải vào thịt sống để phơi thành thịt khô (hồi máu và tinh thần).' },
   { id: 'chest', cat: 'survival', name: 'Rương', icon: '🧰', place: true, station: 'science', needs: { boards: 3 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ. Ai cũng mở được, tiện chia đồ với bạn bè.` },
   { id: 'icebox', cat: 'survival', name: 'Hộp Đá Lạnh', icon: '🧊', place: true, station: 'science', needs: { bearger_fur: 1, gold: 2, cutstone: 2 }, desc: `Cất giữ ${CHEST_SIZE} ô đồ, đồ ăn bên trong hư chậm gấp đôi. Làm từ Lông Gấu của boss Bearger.` },
 
   { id: 'rope', cat: 'refine', station: 'science', needs: { cutgrass: 3 }, desc: 'Nguyên liệu cho giáp, mũ, lều, boomerang.' },
-  { id: 'boards', cat: 'refine', station: 'science', needs: { log: 4 }, desc: 'Nguyên liệu cho rương, nồi nấu. Cũng là củi tốt.' },
-  { id: 'cutstone', cat: 'refine', station: 'science', needs: { rocks: 3 }, desc: 'Nguyên liệu cho nồi nấu.' },
+  { id: 'boards', cat: 'refine', station: 'science', needs: { log: 4 }, desc: 'Nguyên liệu cho rương, nồi nấu, nhà lợn. Cũng là củi tốt.' },
+  { id: 'cutstone', cat: 'refine', station: 'science', needs: { rocks: 3 }, desc: 'Nguyên liệu cho nồi nấu, nhà lợn.' },
 
   { id: 'science', cat: 'science', name: 'Máy Khoa Học', icon: '⚗️', place: true, needs: { gold: 1, log: 4, rocks: 4 }, desc: 'Đứng gần máy để chế tạo đồ cao cấp (các món có 🔒).' },
+  { id: 'pighouse', cat: 'science', name: 'Nhà lợn', icon: '🛖', place: true, station: 'science', needs: { boards: 4, cutstone: 3, pigskin: 4 }, desc: 'Có một con lợn ở: ban ngày ra đi quanh nhà, ghét nhện, cho thịt thì đi theo đánh giúp. Lợn chết thì vài ngày sau nhà có con mới, giết lợn có thể rơi Da lợn để xây thêm nhà.' },
   { id: 'crockpot', cat: 'science', name: 'Nồi nấu', icon: '🫕', place: true, station: 'science', needs: { cutstone: 3, boards: 2, twigs: 6 }, desc: 'Đứng gần nồi để nấu các món hầm bổ dưỡng.' },
 
   { id: 'spear', cat: 'gear', needs: { twigs: 2, cutgrass: 2, flint: 1 }, desc: 'Vũ khí cơ bản.' },
@@ -174,6 +181,7 @@ export const RECIPES = [
   { id: 'furarmor', cat: 'gear', station: 'science', needs: { deerclops_eyeball: 1, rope: 4, log: 8, silk: 4 }, desc: 'Giáp lông Deerclops, chặn 90% sát thương, bền gấp đôi giáp gỗ.' },
   { id: 'logsuit', cat: 'gear', station: 'science', needs: { rope: 2, log: 8 }, desc: 'Giáp mặc người, chặn 80% sát thương.' },
   { id: 'helmet', cat: 'gear', station: 'science', needs: { rope: 1, silk: 2, log: 2 }, desc: 'Mũ đội đầu, chặn 75% sát thương.' },
+  { id: 'pighat', cat: 'gear', station: 'science', needs: { pigskin: 1, rope: 1 }, desc: 'Mũ da lợn, chặn 70% sát thương. Rẻ, không cần tơ nhện.' },
   { id: 'garland', cat: 'gear', needs: { petals: 12 }, desc: 'Đội lên đầu để hồi tinh thần từ từ. Héo sau 6 phút.' },
 
   { id: 'meatballs', cat: 'food', station: 'crockpot', needs: { morsel: 1, berries: 3 }, desc: 'Rất no bụng.' },
@@ -186,6 +194,7 @@ export const BIOMES = {
   meadow: { color: [112, 136, 60] },
   forest: { color: [56, 82, 44] },
   rocky: { color: [146, 128, 96] },
+  village: { color: [150, 105, 75] }, // làng lợn: đất lát gạch ca-rô (xem villageCheck), quanh tâm làng VILLAGE.zone
   ocean: { color: [38, 84, 120] }, // ngoài bờ biển (bản đồ có giới hạn): không có gì mọc, không đi qua được
 };
 export const SHORE_COLORS = { sand: [196, 178, 128], shallow: [62, 128, 150] };
@@ -252,7 +261,7 @@ export function denAt(seed, gx, gy, radius = Infinity) {
   if (hash(seed + 10, gx, gy) >= DEN_CHANCE) return null;
   const x = Math.round((gx + 0.2 + 0.6 * hash(seed + 11, gx, gy)) * DEN_CELL);
   const y = Math.round((gy + 0.2 + 0.6 * hash(seed + 12, gx, gy)) * DEN_CELL);
-  if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < DEN_SAFE || biomeAt(seed, x, y, radius) !== 'forest') return null;
+  if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < DEN_SAFE || baseBiomeAt(seed, x, y, radius) !== 'forest') return null;
   if (coastDist(seed, radius, x, y) < 150) return null; // ổ không nằm sát mép biển
   return { x, y, cell: `${gx},${gy}` };
 }
@@ -276,7 +285,7 @@ function fallbackDen(seed, radius) {
       const x = Math.round(SPAWN.x + Math.cos(a) * r), y = Math.round(SPAWN.y + Math.sin(a) * r);
       if (coastDist(seed, radius, x, y) < 150) continue;
       const d = { x, y, cell: 'fallback' };
-      if (biomeAt(seed, x, y) === 'forest') found = d;
+      if (baseBiomeAt(seed, x, y, Infinity) === 'forest') found = d;
       else land ??= d;
     }
     found ??= land;
@@ -299,8 +308,111 @@ export function densIn(seed, x0, y0, x1, y1, radius = Infinity) {
   return out;
 }
 
-// radius: bán kính đảo (xem coastR), ngoài bờ là 'ocean'.
-export function biomeAt(seed, x, y, radius = Infinity) {
+// Làng lợn: mỗi ô lưới VILLAGE.cell có thể có một làng, cố định theo seed. Server đặt nhà khi tạo chunk;
+// client tính giống vậy để bản đồ biết làng ở đâu (kể cả vùng chưa ai tới).
+// cell: mỗi ô lưới cell x cell có tối đa một làng (chance); zone: bán kính vùng làng (quần xã 'village' riêng,
+// không có cây rừng, không có nhện mọc ra); safe / denGap / coast: cách điểm hồi sinh / ổ Nhện chúa / bờ biển.
+export const VILLAGE = {
+  cell: 5000, chance: 0.4, tries: 8, zone: 400, safe: 1600, denGap: 1300, coast: 500, minHouses: 3, maxHouses: 5, ring: [130, 240],
+};
+
+// Làng lợn của ô lưới (gx, gy): { cell, x, y, houses: [{ x, y }] } hoặc null. Cố định theo seed.
+const villageMemo = new Map();
+export function villageAt(seed, gx, gy, radius = Infinity) {
+  const key = `${seed},${radius},${gx},${gy}`;
+  if (!villageMemo.has(key)) {
+    if (villageMemo.size > 20000) villageMemo.clear();
+    const v = findVillage(seed, gx, gy, radius) ?? (fallbackVillageCell(seed, radius) === `${gx},${gy}` ? findVillage(seed, gx, gy, radius, true) : null);
+    villageMemo.set(key, v);
+  }
+  return villageMemo.get(key);
+}
+
+// Đảo không ô nào trúng làng: lấy ô gần điểm hồi sinh nhất có chỗ đặt làng hợp lệ, để luôn có ít nhất một làng.
+const fallbackVillages = new Map();
+function fallbackVillageCell(seed, radius) {
+  if (!Number.isFinite(radius)) return null;
+  const key = `${seed},${radius}`;
+  if (!fallbackVillages.has(key)) {
+    const n = Math.ceil((radius * 1.2) / VILLAGE.cell);
+    const cells = [];
+    for (let gy = -n; gy <= n; gy++) for (let gx = -n; gx <= n; gx++) cells.push([gx, gy]);
+    let found = null;
+    if (!cells.some(([gx, gy]) => findVillage(seed, gx, gy, radius))) {
+      const far = ([gx, gy]) => Math.hypot((gx + 0.5) * VILLAGE.cell - SPAWN.x, (gy + 0.5) * VILLAGE.cell - SPAWN.y);
+      cells.sort((a, b) => far(a) - far(b));
+      const c = cells.find(([gx, gy]) => findVillage(seed, gx, gy, radius, true));
+      if (c) found = `${c[0]},${c[1]}`;
+    }
+    fallbackVillages.set(key, found);
+  }
+  return fallbackVillages.get(key);
+}
+
+// force: bỏ qua xác suất có làng (làng dự phòng).
+function findVillage(seed, gx, gy, radius, force = false) {
+  const s = seed + 30;
+  if (!force && hash(s, gx, gy) >= VILLAGE.chance) return null;
+  // thử vài điểm trong ô, lấy điểm đầu tiên hợp lệ (rừng chỉ chiếm một phần ô)
+  let x, y;
+  for (let k = 0; k < VILLAGE.tries && x === undefined; k++) {
+    const cx = Math.round((gx + 0.2 + 0.6 * hash(s + 1 + k * 10, gx, gy)) * VILLAGE.cell);
+    const cy = Math.round((gy + 0.2 + 0.6 * hash(s + 2 + k * 10, gx, gy)) * VILLAGE.cell);
+    if (villageSpotOk(seed, cx, cy, radius)) [x, y] = [cx, cy];
+  }
+  if (x === undefined) return null;
+  const n = VILLAGE.minHouses + Math.floor(hash(s + 3, gx, gy) * (VILLAGE.maxHouses - VILLAGE.minHouses + 1));
+  const a0 = hash(s + 4, gx, gy) * Math.PI * 2;
+  const houses = [];
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (i / n) * Math.PI * 2 + (hash(s + 5, gx * 7 + i, gy) - 0.5) * 0.6;
+    const r = VILLAGE.ring[0] + hash(s + 6, gx, gy * 7 + i) * (VILLAGE.ring[1] - VILLAGE.ring[0]);
+    houses.push({ x: Math.round(x + Math.cos(a) * r), y: Math.round(y + Math.sin(a) * r) });
+  }
+  return { cell: `${gx},${gy}`, x, y, houses };
+}
+
+// Tâm làng: trên đất liền (quần xã nào cũng được, vùng làng đè lên), xa điểm hồi sinh, xa bờ biển và không sát ổ Nhện chúa.
+function villageSpotOk(seed, x, y, radius) {
+  if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < VILLAGE.safe) return false;
+  if (coastDist(seed, radius, x, y) < VILLAGE.coast) return false;
+  const dgx = Math.floor(x / DEN_CELL), dgy = Math.floor(y / DEN_CELL);
+  for (let oy = -1; oy <= 1; oy++) {
+    for (let ox = -1; ox <= 1; ox++) {
+      const d = denAt(seed, dgx + ox, dgy + oy, radius);
+      if (d && Math.hypot(d.x - x, d.y - y) < VILLAGE.denGap) return false;
+    }
+  }
+  return true;
+}
+
+// Mọi làng có tâm trong hình chữ nhật [x0, x1) × [y0, y1).
+export function villagesIn(seed, x0, y0, x1, y1, radius = Infinity) {
+  const out = [];
+  for (let gy = Math.floor(y0 / VILLAGE.cell); gy <= Math.floor(y1 / VILLAGE.cell); gy++) {
+    for (let gx = Math.floor(x0 / VILLAGE.cell); gx <= Math.floor(x1 / VILLAGE.cell); gx++) {
+      const v = villageAt(seed, gx, gy, radius);
+      if (v && v.x >= x0 && v.x < x1 && v.y >= y0 && v.y < y1) out.push(v);
+    }
+  }
+  return out;
+}
+
+// radius: bán kính đảo (xem coastR), ngoài bờ là 'ocean'. villages: thế giới có làng lợn (cfg.pigVillages) thì
+// quanh mỗi làng là quần xã 'village' riêng.
+export function biomeAt(seed, x, y, radius = Infinity, villages = false) {
+  const b = baseBiomeAt(seed, x, y, radius);
+  if (!villages || b === 'ocean') return b;
+  // Tâm làng nằm giữa ô (cách mép ít nhất 0.2 ô > zone) nên chỉ cần xét làng của ô chứa điểm.
+  const v = villageAt(seed, Math.floor(x / VILLAGE.cell), Math.floor(y / VILLAGE.cell), radius);
+  return v && (v.x - x) ** 2 + (v.y - y) ** 2 < VILLAGE.zone ** 2 ? 'village' : b;
+}
+
+// Đất làng lát ô ca-rô hai màu (cạnh ô theo pixel thế giới): true là ô sáng.
+export const villageCheck = (x, y, size = 100) => (Math.floor(x / size) + Math.floor(y / size)) % 2 === 0;
+
+// Quần xã gốc (chưa tính làng lợn): vùng của tâm gần nhất trong lưới BIOME_CELL.
+function baseBiomeAt(seed, x, y, radius) {
   if (!onLand(seed, radius, x, y)) return 'ocean';
   const gx = Math.floor(x / BIOME_CELL), gy = Math.floor(y / BIOME_CELL);
   let best = null;

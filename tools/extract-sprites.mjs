@@ -223,6 +223,8 @@ const COPIES = {
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [`explosion_${i}`, `explosion/explosion_${i}.png`])),
   logsuit: 'logsuit.png', // icon giáp gỗ
   icebox: 'icebox.png', // Hộp Đá Lạnh (icon và hình đặt ngoài thế giới)
+  pighouse: 'pighouse.png', // Nhà lợn ở làng lợn
+  pigskin: 'pigskin.png', // icon Da lợn (rơi ra khi giết lợn / đập nhà lợn)
 };
 
 const PAD = 3;

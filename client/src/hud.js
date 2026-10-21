@@ -1,5 +1,5 @@
 import {
-  ITEMS, RECIPES, CATEGORIES, STATIONS, GEAR_SLOTS, GEAR_NAMES, INV_SIZE, PACK_SIZE, CHEST_SIZE,
+  ITEMS, RECIPES, CATEGORIES, STATIONS, GEAR_SLOTS, GEAR_NAMES, INV_SIZE, MAX_PACK, CHEST_SIZE,
   MAX_HP, MAX_HUNGER, MAX_SANITY, POISON, phaseAt,
 } from '../../shared/data.js';
 import { PRESETS, sanitizeSettings, clockOf, presetOf, settingsHtml, durationText } from '../../shared/settings.js';
@@ -8,6 +8,7 @@ import { Controls } from './touch.js';
 import { Sound } from './audio.js';
 
 const LONG_PRESS_MS = 420;
+const DRAG_PX = 8; // rê quá chừng này (pixel) từ chỗ bấm thì thành kéo đồ, không còn là bấm / giữ lâu
 
 const PHASE_NAMES = { day: 'Ban ngày', dusk: 'Chạng vạng', night: 'Ban đêm' };
 const GEAR_EMPTY = { hand: '✋', head: '🎩', body: '👕' };
@@ -46,7 +47,8 @@ function itemInfo(it) {
   if (def.damage) lines.push(`Sát thương ${def.damage}`);
   if (def.uses) lines.push(`Độ bền ${Math.max(0, Math.round((it.dur / def.uses) * 100))}%`);
   if (def.perish) lines.push(it.id === 'rotten' ? `Sắp biến mất (${Math.round(freshness(it) * 100)}%)` : `Độ tươi ${Math.round(freshness(it) * 100)}%`);
-  if (def.pack) lines.push(`Thêm ${PACK_SIZE} ô đồ${it.slots?.some(Boolean) ? ' · đang chứa đồ' : ''}`);
+  if (def.pack) lines.push(`Thêm ${def.pack} ô đồ${it.slots?.some(Boolean) ? ' · đang chứa đồ' : ''}`);
+  if (def.speed) lines.push(`Đeo vào đi chậm ${Math.round((1 - def.speed) * 100)}%`);
   if (def.fuel) lines.push(`Củi: +${def.fuel} giây`);
   if (def.poison) lines.push(`Gây độc: quái mất thêm ${POISON.mob} máu trong ${POISON.ms / 1000} giây (boss chịu một nửa)`);
   if (def.cures) lines.push('Chữa khỏi trúng độc');
@@ -66,6 +68,7 @@ function itemTitle(it, chestOpen) {
   const lines = [def.name, ...itemInfo(it).filter((l) => !l.startsWith('Độ bền'))];
   const left = primaryAction(def, chestOpen);
   if (left) lines.push(`Chuột trái: ${left}`);
+  lines.push(def.food && /meat|morsel|jerky/.test(it.id) ?'Kéo: đổi chỗ, hoặc thả vào lợn để cho ăn' : 'Kéo: đổi chỗ');
   const right = [];
   if (def.dry) right.push('Phơi (khi gần Giàn phơi)');
   if (def.cook) right.push(def.food ? 'Nướng (khi gần lửa)' : `Đốt thành ${ITEMS[def.cook].name} (khi gần lửa)`);
@@ -90,27 +93,49 @@ export class Hud {
 
     // Các ô sau INV_SIZE là ô ba lô, chỉ hiện khi đang đeo ba lô.
     // Chạm: dùng ngay. Giữ lâu (cảm ứng): mở menu nướng / phơi / vứt. Chuột phải (máy tính): như cũ.
+    // Kéo (chuột hay ngón tay): thả lên ô khác để đổi chỗ / gộp, thả vào lợn để cho ăn, thả vào rương để cất.
     this.slots = [];
-    for (let i = 0; i < INV_SIZE + PACK_SIZE; i++) {
+    for (let i = 0; i < INV_SIZE + MAX_PACK; i++) {
       const el = document.createElement('div');
       el.className = 'slot';
       let timer = null;
       let longPressed = false;
       let pointer = 'mouse';
+      let press = null; // { x, y, id }: đang bấm giữ ô này, chưa biết là bấm hay kéo
+      let dragged = false;
       el.addEventListener('pointerdown', (e) => {
         pointer = e.pointerType;
         longPressed = false;
+        dragged = false;
         clearTimeout(timer);
-        if (pointer === 'mouse' || !this.inv[i]) return;
+        if (!this.inv[i] || e.button !== 0) return;
+        press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        el.setPointerCapture(e.pointerId);
+        if (pointer === 'mouse') return;
         timer = setTimeout(() => {
           longPressed = true;
+          press = null;
           navigator.vibrate?.(15);
           this.openSheet(i);
         }, LONG_PRESS_MS);
       });
-      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => clearTimeout(timer));
+      // Rê quá DRAG_PX thì bắt đầu kéo; từ đó startDrag nghe di chuyển / thả trên cả cửa sổ.
+      el.addEventListener('pointermove', (e) => {
+        if (!press || e.pointerId !== press.id || this.drag) return;
+        if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_PX) return;
+        clearTimeout(timer);
+        dragged = true; // để cú click sau khi thả không dùng món đồ
+        this.startDrag(i, e.pointerId);
+        this.moveDrag(e.clientX, e.clientY);
+      });
+      for (const ev of ['pointerup', 'pointercancel']) {
+        el.addEventListener(ev, () => {
+          clearTimeout(timer);
+          press = null;
+        });
+      }
       el.addEventListener('click', () => {
-        if (longPressed) return;
+        if (longPressed || dragged) return;
         socket.emit(this.chestId ? 'chest:store' : 'use', { slot: i });
       });
       el.addEventListener('contextmenu', (e) => {
@@ -242,7 +267,8 @@ export class Hud {
       if (def.armor) stats.push(`Chặn ${Math.round(def.armor * 100)}% sát thương`);
       if (def.food) stats.push(`No +${def.food.hunger} · Máu ${sign(def.food.health)} · Tinh thần ${sign(def.food.sanity)}`);
       if (def.uses) stats.push(def.burns ? `Dùng được ${def.uses} giây` : def.armor ? `Bền ${def.uses}` : `Dùng được ${def.uses} lần`);
-      if (def.pack) stats.push(`Thêm ${PACK_SIZE} ô đồ`);
+      if (def.pack) stats.push(`Thêm ${def.pack} ô đồ`);
+      if (def.speed) stats.push(`Đi chậm ${Math.round((1 - def.speed) * 100)}%`);
       if (r.place) stats.push('Đặt ngay xuống đất cạnh bạn');
       const needs = Object.entries(r.needs).map(([id, n]) => {
         const src = ITEMS[id].from ?? (RECIPES.some((x) => x.id === id) ? 'Chế tạo ở nhóm Tinh chế' : '');
@@ -412,6 +438,75 @@ export class Hud {
     if (attack !== this.attackLabel) $('act-attack').querySelector('small').textContent = this.attackLabel = attack;
   }
 
+  // ---------- Kéo thả đồ ----------
+
+  // Bắt đầu kéo ô i: icon của món đồ chạy theo con trỏ / ngón tay.
+  // Di chuyển / thả nghe trên cả cửa sổ (không chỉ trên ô đồ): lỡ mất pointer capture (đổi tab, cử chỉ hệ thống)
+  // thì vẫn kết thúc được lượt kéo, icon không bị kẹt lại trên màn hình.
+  startDrag(i, pointerId) {
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.innerHTML = this.slots[i].querySelector('.ic')?.outerHTML ?? '';
+    document.body.appendChild(ghost);
+    this.slots[i].classList.add('dragging');
+    const mine = (e) => e.pointerId === pointerId;
+    const listeners = {
+      pointermove: (e) => mine(e) && this.moveDrag(e.clientX, e.clientY),
+      pointerup: (e) => mine(e) && this.endDrag(e.clientX, e.clientY),
+      pointercancel: (e) => mine(e) && this.cancelDrag(),
+      blur: () => this.cancelDrag(),
+    };
+    for (const [ev, fn] of Object.entries(listeners)) window.addEventListener(ev, fn, true);
+    this.drag = { i, ghost, over: null, listeners };
+  }
+
+  // Ô đồ dưới điểm (x, y) màn hình: chỉ số trong túi hoặc -1.
+  slotAt(el) {
+    return this.slots.indexOf(el?.closest('.slot'));
+  }
+
+  moveDrag(x, y) {
+    const d = this.drag;
+    d.ghost.style.left = `${x}px`;
+    d.ghost.style.top = `${y}px`;
+    const el = document.elementFromPoint(x, y);
+    const to = this.slotAt(el);
+    const over = to >= 0 && to !== d.i ? this.slots[to] : null;
+    if (over !== d.over) {
+      d.over?.classList.remove('drop');
+      over?.classList.add('drop');
+      d.over = over;
+    }
+    // Trên màn chơi: lợn dưới con trỏ sáng lên (thả vào là cho ăn)
+    this.scene?.dragOver(el?.closest('#game') ? [x, y] : null);
+  }
+
+  // Thả: lên ô khác thì đổi chỗ / gộp, vào rương đang mở thì cất, ra màn chơi trúng lợn thì cho lợn ăn.
+  endDrag(x, y) {
+    const { i } = this.drag;
+    this.cancelDrag();
+    const el = document.elementFromPoint(x, y);
+    const to = this.slotAt(el);
+    if (to >= 0) {
+      if (to !== i) this.socket.emit('swap', { from: i, to });
+    } else if (this.chestId && el?.closest('#chest')) {
+      this.socket.emit('chest:store', { slot: i });
+    } else if (el?.closest('#game')) {
+      this.scene?.dropItem(i, x, y);
+    }
+  }
+
+  cancelDrag() {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    for (const [ev, fn] of Object.entries(d.listeners)) window.removeEventListener(ev, fn, true);
+    d.ghost.remove();
+    d.over?.classList.remove('drop');
+    this.slots[d.i].classList.remove('dragging');
+    this.scene?.dragOver(null);
+  }
+
   // ---------- Menu giữ lâu vào ô đồ (cảm ứng) ----------
 
   openSheet(i) {
@@ -528,6 +623,7 @@ export class Hud {
       const it = this.inv[i];
       el.innerHTML = (i < 10 ? `<span class="key">${(i + 1) % 10}</span>` : '') + (it ? itemHtml(it) : '');
       el.title = it ? itemTitle(it, !!this.chestId) : '';
+      el.hidden = i >= this.inv.length; // ba lô nhỏ thì ẩn các ô thừa
     });
     $('pack').hidden = this.inv.length <= INV_SIZE;
     if (this.sheetSlot !== null && !this.inv[this.sheetSlot]) this.closeSheet();

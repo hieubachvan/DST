@@ -5,3 +5,6 @@ data
 # Hình bộ phận gốc của Don't Starve (Klei) để thử hoạt ảnh ghép mảnh: chỉ dùng trên máy, không commit / deploy
 Bearger.png
 client/public/rig/
+
+# Cấu hình Claude Code trên máy (có địa chỉ VPS): không commit
+.claude/

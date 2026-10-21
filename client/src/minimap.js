@@ -1,4 +1,4 @@
-import { BIOMES, CHUNK, SPAWN, FIRES, STATIONS, DEN_CELL, biomeAt, densIn } from '../../shared/data.js';
+import { BIOMES, CHUNK, SPAWN, FIRES, STATIONS, DEN_CELL, VILLAGE, biomeAt, densIn, villagesIn } from '../../shared/data.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -77,7 +77,7 @@ export class Minimap {
     const seed = this.scene.seed;
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
-        const [r, g, b] = BIOMES[biomeAt(seed, (gx0 + x + 0.5) * cell, (gy0 + y + 0.5) * cell, this.scene.mapR)].color;
+        const [r, g, b] = BIOMES[biomeAt(seed, (gx0 + x + 0.5) * cell, (gy0 + y + 0.5) * cell, this.scene.mapR, this.scene.villages)].color;
         const i = (y * n + x) * 4;
         img.data[i] = r;
         img.data[i + 1] = g;
@@ -99,6 +99,31 @@ export class Minimap {
       this.dens = densIn(this.scene.seed, me.x - r, me.y - r, me.x + r, me.y + r, this.scene.mapR);
     }
     return this.dens;
+  }
+
+  // Làng lợn trong khung nhìn, tính từ seed như ổ nhện. Chỉ tính lại khi sang ô lưới làng khác hoặc đổi thu phóng.
+  villagesNear(me, half) {
+    if (!this.scene.villages) return [];
+    const r = half + VILLAGE.cell;
+    const key = `${Math.floor(me.x / VILLAGE.cell)},${Math.floor(me.y / VILLAGE.cell)},${r}`;
+    if (key !== this.villagesKey) {
+      this.villagesKey = key;
+      this.villages = villagesIn(this.scene.seed, me.x - r, me.y - r, me.x + r, me.y + r, this.scene.mapR);
+    }
+    return this.villages;
+  }
+
+  // Làng lợn: vòng tròn hồng có mặt lợn, nhà lợn đã thấy thì vẽ thêm ô hồng riêng (xem draw).
+  drawVillage(px, py, s) {
+    const { ctx } = this;
+    ctx.fillStyle = 'rgba(232, 160, 168, 0.85)';
+    ctx.strokeStyle = '#3b2a1a';
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.arc(px, py, 8 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    this.label('🐷', px, py + 5 * s, 11 * s, '#ffffff');
   }
 
   // Điểm ở mép bản đồ theo hướng (px, py) nhìn từ tâm, và góc của hướng đó (cho mũi tên chỉ thứ nằm ngoài khung).
@@ -185,6 +210,12 @@ export class Minimap {
     const [sx, sy] = toMap(SPAWN.x, SPAWN.y);
     if (inside(sx, sy)) this.label('✦', sx, sy + 7 * s, 14 * s, '#fff3c4');
 
+    // Làng lợn (dưới các nhà lợn đã tải)
+    for (const v of this.villagesNear(me, half)) {
+      const [px, py] = toMap(v.x, v.y);
+      if (inside(px, py)) this.drawVillage(px, py, s);
+    }
+
     // Công trình và lửa trong vùng đã tải quanh mình
     for (const o of scene.ents.values()) {
       const e = o.e;
@@ -198,6 +229,12 @@ export class Minimap {
       } else if (BUILDINGS.has(e.type)) {
         ctx.fillStyle = '#3b2a1a';
         ctx.fillRect(px - 3 * s, py - 3 * s, 6 * s, 6 * s);
+      } else if (e.type === 'pighouse') {
+        ctx.fillStyle = '#e8a0a8'; // Nhà lợn: ô hồng
+        ctx.strokeStyle = '#3b2a1a';
+        ctx.lineWidth = 1.5 * s;
+        ctx.fillRect(px - 3.5 * s, py - 3.5 * s, 7 * s, 7 * s);
+        ctx.strokeRect(px - 3.5 * s, py - 3.5 * s, 7 * s, 7 * s);
       }
     }
 

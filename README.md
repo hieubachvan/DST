@@ -38,6 +38,11 @@ Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=
 - `/hounds`: gọi đàn chó săn tới sau khoảng 12 giây (gọi được cả khi Deerclops đang ở đây).
 - `/boss`: gọi boss Deerclops tới sau khoảng 12 giây (thử nhanh: `/give boomerang 1`).
 - `/boss bearger`: gọi boss Bearger tới sau khoảng 12 giây. Bearger mê đồ ăn: thả vài quả mọng (`/give berries 20`) để dụ nó.
+- `/den`: dịch chuyển tới ổ Nhện chúa gần nhất. `/pigs`: dịch chuyển tới làng lợn gần nhất.
+- `/time day`, `/time dusk`, `/time night`: tua tới đầu buổi sáng / chạng vạng / tối (chỉ tua tới).
+- `/spawn <loại> [số con]`: thả quái quanh mình (tối đa 20), ví dụ `/spawn spider 3`, `/spawn pig 2`. Boss thì dùng `/boss`.
+- `/pigkit`: đủ đồ thử nhà lợn: nguyên liệu Máy Khoa Học và 2 Nhà lợn, búa, giáo, các loại thịt để cho lợn ăn.
+- `/pigreset`: nhà lợn quanh mình có lợn lại ngay, khỏi chờ mấy ngày sau khi lợn chết.
 
  **Không bật `DEV=1` khi deploy thật.**
 
