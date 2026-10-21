@@ -49,8 +49,11 @@ export const SETTINGS = [
     desc: 'Không ai tới gần công trình trong chừng này ngày thì nó sập.' },
 
   { key: 'spiders', group: 'mobs', label: 'Số nhện quanh mỗi người', type: 'num', min: 0, max: 3, step: 0.5, unit: '×', zero: 'Không có', def: 1 },
-  { key: 'animals', group: 'mobs', label: 'Số thú (thỏ, lợn, bò lông)', type: 'num', min: 0, max: 3, step: 0.5, unit: '×', zero: 'Không có', def: 1 },
+  { key: 'animals', group: 'mobs', label: 'Số thú (thỏ, bò lông)', type: 'num', min: 0, max: 3, step: 0.5, unit: '×', zero: 'Không có', def: 1 },
   { key: 'nightSpiders', group: 'mobs', label: 'Nhện kéo tới ban đêm', type: 'bool', def: true },
+  { key: 'pigVillages', group: 'mobs', label: 'Có làng lợn', type: 'bool', def: true,
+    desc: 'Mỗi làng vài Nhà lợn, mỗi nhà một con lợn: ban ngày đi quanh làng, tối về nhà. Đập nhà bằng búa được Ván gỗ, Gạch đá, Da lợn nhưng lợn sẽ nổi giận.' },
+  { key: 'pigRespawn', group: 'mobs', needs: 'pigVillages', label: 'Lợn chết thì nhà có lợn mới sau', type: 'num', min: 1, max: 15, step: 1, unit: 'ngày', def: 4 },
 
   { key: 'hounds', group: 'hounds', label: 'Có chó săn tấn công', type: 'bool', def: true },
   { key: 'houndDay', group: 'hounds', needs: 'hounds', label: 'Đợt chó săn đầu tiên vào ngày', type: 'num', min: 2, max: 30, step: 0.5, unit: '', def: 5.5 },
@@ -90,7 +93,7 @@ export const PRESETS = {
       phases: 'longday', hunger: 0.75, spoil: 0.5, regrow: 1.5, abandonDays: 10, spiders: 0.5, animals: 1.5, nightSpiders: false,
       houndDay: 8, houndCount: 0.5, deerclopsDay: 15, deerclopsHp: 0.75, beargerDay: 25, beargerHp: 0.75,
       bossReturnKilled: 12, bossReturnLeft: 4, bossHpGrowth: 10, bossDmgGrowth: 5, bossMaxLevel: 3,
-      queenHp: 0.75, queenRespawn: 4, poison: 0.5,
+      queenHp: 0.75, queenRespawn: 4, poison: 0.5, pigRespawn: 3,
     },
   },
   normal: { name: 'Mặc định', icon: '⚖️', values: {} },
@@ -100,7 +103,7 @@ export const PRESETS = {
       phases: 'longnight', hunger: 1.25, spoil: 1.5, regrow: 0.75, abandonDays: 3, spiders: 1.5, animals: 0.5,
       houndDay: 4, houndCount: 1.5, deerclopsDay: 8, deerclopsHp: 1.5, beargerDay: 15, beargerHp: 1.5, together: true,
       bossReturnKilled: 7, bossReturnLeft: 2, bossHpGrowth: 40, bossDmgGrowth: 20, bossMaxLevel: 8,
-      queenHp: 1.5, queenRespawn: 8, poison: 1.5,
+      queenHp: 1.5, queenRespawn: 8, poison: 1.5, pigRespawn: 6,
     },
   },
 };

@@ -214,6 +214,18 @@ img { -webkit-user-drag: none; }
 }
 .slot:hover { border-color: var(--accent); }
 .slot.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.slot { touch-action: none; } /* kéo đồ bằng ngón tay không bị trình duyệt hiểu là cuộn trang */
+.slot.dragging { opacity: 0.45; }
+.slot.drop { border-color: var(--accent); background: rgba(255, 210, 120, 0.25); }
+.drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.6));
+}
+.drag-ghost .ic { font-size: 30px; line-height: 1; }
+.drag-ghost img.ic { width: 40px; height: 40px; object-fit: contain; }
 .slot .ic { font-size: 26px; line-height: 1; }
 .slot .cnt { position: absolute; right: 3px; bottom: 1px; font-size: 12px; font-weight: bold; text-shadow: 0 1px 2px #000; }
 .slot .key { position: absolute; left: 3px; top: 1px; font-size: 9px; opacity: 0.5; }

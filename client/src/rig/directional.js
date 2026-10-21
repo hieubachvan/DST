@@ -15,6 +15,20 @@ export function dirOf(dx, dy, fallback = 'right') {
   return dy > 0 ? 'down' : 'up';
 }
 
+// Như dirOf nhưng khó đổi hướng hơn: vector nằm gần ranh giới ngang / dọc thì giữ hướng cũ (prev), để vị trí bị
+// làm tròn (server gửi số nguyên) hay đi chéo không làm nhân vật lật qua lật lại liên tục.
+export function dirOfSticky(dx, dy, prev) {
+  if (!dx && !dy) return prev;
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  const wasSide = prev === 'left' || prev === 'right';
+  if (wasSide ? ax >= ay * 0.45 : ax >= ay * 1.1) {
+    const side = dx < 0 ? 'left' : 'right';
+    // Đổi trái <-> phải chỉ khi đi ngang rõ ràng; còn nhích ngược chút xíu thì giữ
+    return wasSide && side !== prev && ax < ay * 0.8 ? prev : side;
+  }
+  return dy > 0 ? 'down' : 'up';
+}
+
 export class DirectionalRig {
   // rigs: { side, front, back } — định nghĩa rig (xem rig.js)
   constructor(scene, rigs, x, y, scale) {
@@ -49,6 +63,12 @@ export class DirectionalRig {
   get x() { return this.rig.root.x; }
   get y() { return this.rig.root.y; }
   showJoints(on) { for (const r of Object.values(this.rigs)) r.showJoints(on); }
+  // Ẩn / hiện cả nhân vật (hiện lại thì chỉ hiện rig của hướng đang quay).
+  setVisible(on) {
+    for (const r of Object.values(this.rigs)) r.setVisible(false);
+    if (on) this.rig.setVisible(true);
+    return this;
+  }
   setTintFill(color) { for (const r of Object.values(this.rigs)) r.setTintFill(color); }
   setTint(color) { for (const r of Object.values(this.rigs)) r.setTint(color); }
   destroy() { for (const r of Object.values(this.rigs)) r.destroy(); }

@@ -1,22 +1,24 @@
 import Phaser from 'phaser';
 import {
-  ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, BOOMERANG, biomeAt, fireRadius, darknessAt,
+  ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, BOOMERANG, biomeAt, villageCheck, fireRadius, darknessAt,
   SHORE_COLORS, SHORE_W, coastDist, clampToLand,
 } from '../../shared/data.js';
-import { mapRadius } from '../../shared/settings.js';
+import { mapRadius, sanitizeSettings } from '../../shared/settings.js';
 import { makeTextures } from './textures.js';
 import { Minimap } from './minimap.js';
 import { art, itemSprite, itemTint, SPRITE_URL, RIG_URL, rigParts } from './art.js';
-import { DirectionalRig, dirOf } from './rig/directional.js';
+import { DirectionalRig, dirOf, dirOfSticky } from './rig/directional.js';
 import { BEARGER_RIGS } from './rig/bearger.js';
 import { HERO_RIGS, HERO_HEIGHT, HERO_GEAR, equipHero } from './rig/hero.js';
 import { HERO_PARTS } from './rig/hero-parts.js';
+import { PIG_RIGS, PIG_HEIGHT, PIG_IMAGES } from './rig/pig.js';
+import { equipWeapon, WEAPONS } from './rig/biped.js';
 
 // Chiều cao hiển thị (pixel thế giới) của từng sprite thật. Hình vẽ bằng code giữ nguyên cỡ.
 const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
-  campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78,
+  campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78, pighouse: 150,
   rabbit: 34, spider: 46, spiderling: 32, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
@@ -28,6 +30,19 @@ const POISON_TINT = 0x9be36a; // màu nhuộm khi trúng độc (quái, người
 const BEARGER_SCALE = 2.3;
 const BEARGER_BIG = new Set(['bearger_roar', 'bearger_sleep']);
 const BOSSES = new Set(['deerclops', 'bearger']);
+// Lợn ghép mảnh 4 hướng (lon.png, xem rig/pig.js), cao ~72px. Chạy (đuổi đánh) khi đi nhanh hơn PIG_RUN pixel/giây.
+const PIG_H = 72;
+const PIG_SCALE = PIG_H / PIG_HEIGHT;
+const PIG_RUN = 110;
+const PIG_ATTACK_MS = 550; // một nhát đấm (hoạt ảnh slash tay không)
+// Nhà lợn: ô cửa sổ tròn trên hình gốc (tâm, bán kính, pixel), sáng đèn khi lợn ở trong nhà ban đêm.
+const PIGHOUSE_SRC_H = 345;
+const PIGHOUSE_WINDOW = { x: 99.5 - 193 / 2, y: 119, r: 20 };
+const VILLAGE_TILES = [[162, 116, 82], [138, 96, 68]]; // đất làng lợn: gạch ca-rô sáng / tối
+
+// Khói nhà sập: node tools/frames-to-sheet.mjs khoi client/public/sprites/smoke.png (13 khung 300x300 xếp ngang).
+const SMOKE = { frames: 13, size: 300, ms: [50, 50, 50, 10, 100, 100, 50, 50, 50, 50, 50, 50, 50], h: 230 };
+const PIGHOUSE_LIGHT = 70; // bán kính quầng sáng quanh cửa sổ (chỉ để nhìn, không xua bóng tối)
 // Bearger ghép mảnh (khi có mảnh hình trong client/public/rig/bearger): thu nhỏ để cao ~130px như sprite.
 const BEARGER_RIG_SCALE = 0.42;
 const ROAR_RATE = { deerclops: 1, bearger: 0.75 }; // Bearger dùng chung tiếng gầm, phát trầm hơn
@@ -87,7 +102,7 @@ const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3
 const DIGGABLE = new Set(['sapling', 'grass', 'bush']);
 const NAMES = {
   tree: 'Cây thông', boulder: 'Tảng đá', sapling: 'Cây non', grass: 'Bụi cỏ', bush: 'Bụi quả mọng',
-  flower: 'Hoa', flint: 'Đá lửa', carrot: 'Cà rốt', spiderden: 'Ổ Nhện chúa',
+  flower: 'Hoa', flint: 'Đá lửa', carrot: 'Cà rốt', spiderden: 'Ổ Nhện chúa', pighouse: 'Nhà lợn',
   ...Object.fromEntries(RECIPES.filter((r) => r.place).map((r) => [r.id, r.name])),
 };
 const PICK_LABELS = {
@@ -104,7 +119,12 @@ export class GameScene extends Phaser.Scene {
     for (const [tex, name] of Object.entries(TEX_FROM_SPRITE)) {
       if (art.has(name)) this.load.image(tex, `${SPRITE_URL}${name}.png`);
     }
+    this.load.spritesheet('smoke', `${SPRITE_URL}smoke.png`, { frameWidth: SMOKE.size, frameHeight: SMOKE.size });
     for (const name of Object.keys(HERO_PARTS)) this.load.image(`hero_${name}`, `${import.meta.env.BASE_URL}hero/${name}.png`);
+    // Lợn ghép mảnh: mảnh lợn + ảnh vũ khí (rig có sẵn xương vũ khí, lợn không cầm nên ẩn đi)
+    for (const [key, file] of [...PIG_IMAGES, ...WEAPONS.map((w) => [`stick_${w}`, `stick/${w}.png`])]) {
+      this.load.image(key, `${import.meta.env.BASE_URL}${file}`);
+    }
     for (const [name, parts] of rigParts) {
       for (const key of Object.keys(parts)) this.load.image(`${name}_${key}`, `${RIG_URL}${name}/${key}.png`);
     }
@@ -151,6 +171,7 @@ export class GameScene extends Phaser.Scene {
 
     this.seed = init.seed;
     this.mapR = mapRadius(init.settings); // bán kính đảo, Infinity = vô hạn
+    this.villages = sanitizeSettings(init.settings).pigVillages; // có làng lợn: mặt đất quanh làng là quần xã riêng
     this.grounds = new Map(); // "cx,cy" -> ảnh mặt đất của chunk
     this.noise = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'gnoise')
       .setOrigin(0).setDepth(GROUND_DEPTH + 1);
@@ -184,6 +205,7 @@ export class GameScene extends Phaser.Scene {
     this.tip =document.getElementById('tip');
     this.minimap = new Minimap(this);
     this.hud.minimap = this.minimap;
+    this.hud.scene = this; // kéo đồ từ túi ra màn chơi (dragOver / dropItem)
 
     this.bindSocket();
     this.socket.emit('ready');
@@ -270,13 +292,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     const seenMobs = new Set();
-    for (const [id, type, x, y, asleep] of snap.m) {
+    for (const [id, type, x, y, asleep, follow] of snap.m) {
       seenMobs.add(id);
       let m = this.mobs.get(id);
       if (!m) m = this.makeMob(id, type, x, y, !!asleep);
       m.tx = x;
       m.ty = y;
       m.asleep = !!asleep;
+      if (m.heart) m.heart.setVisible(!!follow);
     }
     for (const [id, m] of this.mobs) {
       if (!seenMobs.has(id)) {
@@ -349,7 +372,11 @@ export class GameScene extends Phaser.Scene {
   // Màu mặt đất: biome, riêng quanh bờ biển có dải cát và nước nông chuyển dần sang nước sâu.
   groundColor(x, y) {
     const d = coastDist(this.seed, this.mapR, x, y);
-    if (d >= SHORE_W * 0.6) return BIOMES[biomeAt(this.seed, x, y)].color;
+    if (d >= SHORE_W * 0.6) {
+      const b = biomeAt(this.seed, x, y, this.mapR, this.villages);
+      if (b === 'village') return villageCheck(x, y) ? VILLAGE_TILES[0] : VILLAGE_TILES[1];
+      return BIOMES[b].color;
+    }
     if (d >= 0) return SHORE_COLORS.sand;
     const t = Math.min(1, -d / (SHORE_W * 4));
     const a = SHORE_COLORS.shallow, b = BIOMES.ocean.color;
@@ -426,6 +453,19 @@ export class GameScene extends Phaser.Scene {
       spr.setSize(30, 30);
       spr.pic = pic;
       spr.count = count;
+    } else if (e.type === 'pighouse') {
+      spr = this.add.container(e.x, e.y);
+      const img = this.add.image(0, 0, 'pighouse').setOrigin(0.5, 0.95);
+      this.applyArt(img, 'pighouse');
+      const k = img.scaleY;
+      const w = PIGHOUSE_WINDOW;
+      const win = this.add.circle(w.x * k, (w.y - PIGHOUSE_SRC_H * 0.95) * k, w.r * k, 0xffc65a, 0.75)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      spr.add([img, win]);
+      spr.setSize(img.displayWidth, img.displayHeight);
+      spr.img = img;
+      spr.win = win;
+      spr.winY = e.y + (w.y - PIGHOUSE_SRC_H * 0.95) * k;
     } else {
       spr = this.add.image(e.x, e.y, this.entTexture(e)).setOrigin(0.5, 0.95);
     }
@@ -450,6 +490,8 @@ export class GameScene extends Phaser.Scene {
         spr.flame.setVisible(e.fuel > 0);
       }
       spr.glow.setVisible(e.fuel > 0);
+    } else if (e.type === 'pighouse') {
+      spr.win.setVisible(!!e.inside);
     } else {
       const key = this.entTexture(e);
       const mul = e.type === 'tree' ? 0.85 + ((e.id * 37) % 30) / 100 : 1;
@@ -560,6 +602,20 @@ export class GameScene extends Phaser.Scene {
       body.setVisible(false);
       m.rigDir = 'right';
     }
+    // Lợn ghép mảnh; sprite ẩn kéo cao bằng rig để bấm chuột trúng cả người.
+    if (type === 'pig') {
+      m.rig = new DirectionalRig(this, PIG_RIGS, 0, 0, PIG_SCALE);
+      equipWeapon(m.rig, null);
+      c.add(m.rig.roots);
+      body.setVisible(false).setScale(PIG_H / body.height);
+      m.rigDir = 'down';
+      m.spd = 0;
+      m.svx = m.svy = 0;
+      // Trái tim trên đầu: lợn đang đi theo một người chơi (đã được cho ăn)
+      m.heart = this.add.text(0, -PIG_H - 10, '❤', { fontSize: '16px', color: '#ff7f9a', stroke: '#3b1a22', strokeThickness: 3 })
+        .setOrigin(0.5).setVisible(false);
+      c.add(m.heart);
+    }
     this.mobs.set(id, m);
     if (BOSSES.has(type)) this.roar(x, y, ROAR_RATE[type]);
     return m;
@@ -623,6 +679,7 @@ export class GameScene extends Phaser.Scene {
         // Lệch cao độ một chút để các nhát liên tiếp nghe không giống hệt nhau.
         if (o.e.type === 'tree') this.playAt('chop', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
         else if (o.e.type === 'boulder') this.playAt('mine', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
+        else if (o.e.type === 'pighouse') this.playAt('chop', o.e.x, o.e.y, 0.7 + Math.random() * 0.1); // búa đập nhà: trầm hơn
         this.tweens.add({ targets: o.spr, x: o.e.x + 4, duration: 50, yoyo: true, repeat: 1, onComplete: () => { o.spr.x = o.e.x; } });
         break;
       }
@@ -745,7 +802,14 @@ export class GameScene extends Phaser.Scene {
       }
       case 'bite': {
         const m = this.mobs.get(fx.id);
-        if (m) this.tweens.add({ targets: m.c, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
+        if (!m) break;
+        if (m.type === 'pig') {
+          // Lợn quay về chỗ bị đánh (người hoặc nhện, server gửi ax, ay)
+          if (fx.ax != null) m.aim = [fx.ax - m.x, fx.ay - m.y];
+          m.attackUntil = this.time.now + PIG_ATTACK_MS;
+          break;
+        }
+        this.tweens.add({ targets: m.c, scaleX: 1.2, scaleY: 1.2, duration: 80, yoyo: true });
         break;
       }
       // Chó săn lấy đà trước khi cắn: thu mình lại và đỏ dần, chạy ra kịp là né được.
@@ -876,6 +940,27 @@ export class GameScene extends Phaser.Scene {
           this.cameras.main.shake(300, 0.015);
         }
         break;
+      case 'feed': {
+        const m = this.mobs.get(fx.id);
+        if (!m) break;
+        this.floatText(m.x, m.y - PIG_H - 10, '❤', '#ff7f9a');
+        this.playAt('pickup', m.x, m.y, 0.8);
+        break;
+      }
+      case 'collapse': {
+        if (!this.textures.exists('smoke')) break;
+        // Khói che chân nhà (gốc ở đáy khung), phát hết các khung theo thời gian gốc của GIF rồi biến mất.
+        const img = this.add.image(fx.x, fx.y + 20, 'smoke', 0).setOrigin(0.5, 0.9).setDepth(fx.y + 1).setScale(SMOKE.h / SMOKE.size);
+        let i = 0;
+        const step = () => {
+          if (++i >= SMOKE.frames) return img.destroy();
+          img.setFrame(i);
+          this.time.delayedCall(SMOKE.ms[i], step);
+        };
+        this.time.delayedCall(SMOKE.ms[0], step);
+        this.playAt('mine', fx.x, fx.y, 0.6);
+        break;
+      }
       case 'die': {
         const puff = this.add.circle(fx.x, fx.y - (fx.big ? 60 : 10), fx.big ? 50 : 14, 0xdddddd, 0.7).setDepth(fx.y + 1);
         this.tweens.add({ targets: puff, scale: 2.5, alpha: 0, duration: fx.big ? 800 : 400, onComplete: () => puff.destroy() });
@@ -939,6 +1024,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (h.kind === 'player') return this.roster.get(h.o.id)?.name ?? '';
     const e = h.o.e;
+    if (e.type === 'pighouse' && this.hasTool('hammer')) return 'Đập Nhà lợn (4 nhát, lợn sẽ nổi giận!)';
     if (STRUCTURES.has(e.type) && this.hasTool('hammer')) return `Đập bỏ ${NAMES[e.type]}`;
     if (DIGGABLE.has(e.type) && this.hasTool('dig')) return `Đào ${NAMES[e.type]}`;
     switch (e.type) {
@@ -953,6 +1039,8 @@ export class GameScene extends Phaser.Scene {
       case 'trap': return e.caught ? 'Lấy thỏ trong bẫy' : 'Bẫy thỏ (đang chờ)';
       case 'tent': return `Ngủ trong lều (còn ${e.uses ?? 0} lần) — chạng vạng / ban đêm`;
       case 'spiderden': return 'Ổ Nhện chúa — nhện con canh quanh ổ, Nhện chúa ngủ bên trong';
+      case 'pighouse':
+        return `Nhà lợn${e.inside ? ' — lợn đang ngủ trong nhà' : ''} (cầm búa để đập lấy Ván gỗ, Gạch đá, Da lợn)`;
       case 'dryingrack': {
         if (!e.dry) return 'Giàn phơi (trống) — chuột phải vào thịt sống để phơi';
         const left = Math.ceil(e.dry.at - this.worldT);
@@ -1022,6 +1110,28 @@ export class GameScene extends Phaser.Scene {
     return best;
   }
 
+  // Đang kéo đồ từ túi ra màn chơi: lợn dưới điểm (x, y) màn hình sáng lên. pt = null để tắt.
+  dragOver(pt) {
+    const m = pt ? this.pigAtScreen(pt[0], pt[1]) : null;
+    if (m === this.dragPig) return;
+    if (this.dragPig?.c.active) this.dragPig.rig.clearTint();
+    m?.rig.setTint(0xfff2b0);
+    this.dragPig = m;
+  }
+
+  // Thả món đồ ở ô slot xuống màn chơi: trúng lợn thì đi tới đó cho ăn (followTarget gửi 'feed' khi đủ gần).
+  dropItem(slot, x, y) {
+    const m = this.pigAtScreen(x, y);
+    if (m) this.target = { kind: 'feed', id: m.id, slot };
+  }
+
+  pigAtScreen(x, y) {
+    const w = this.cameras.main.getWorldPoint(this.scale.transformX(x), this.scale.transformY(y));
+    let h = this.pickAt(w.x, w.y);
+    if (!h && this.hud.controls.touch) h = this.pickNear(w.x, w.y, TAP_SLOP / this.zoom);
+    return h?.kind === 'mob' && h.o.type === 'pig' ? h.o : null;
+  }
+
   onPointerDown(p) {
     if (p.button !== 0 || this.hud.busy) return;
     let h = this.pickAt(p.worldX, p.worldY);
@@ -1055,6 +1165,10 @@ export class GameScene extends Phaser.Scene {
     const ranged = t.kind === 'mob' && (ITEMS[this.gear.hand?.id]?.thrown || this.myBoomFlying);
     if (t.kind === 'point') {
       tx = t.x; ty = t.y; range = 6;
+    } else if (t.kind === 'feed') {
+      const m = this.mobs.get(t.id);
+      if (!m) { this.target = null; return [0, 0]; }
+      tx = m.x; ty = m.y; range = 46;
     } else if (t.kind === 'mob') {
       const m = this.mobs.get(t.id);
       if (!m) { this.target = null; return [0, 0]; }
@@ -1067,6 +1181,12 @@ export class GameScene extends Phaser.Scene {
     const dx = tx - this.me.x, dy = ty - this.me.y, d = Math.hypot(dx, dy);
     if (d > range) return [dx / d, dy / d];
     if (t.kind === 'point' || this.me.dead) {
+      this.target = null;
+      return [0, 0];
+    }
+    if (t.kind === 'feed') {
+      this.flushPos();
+      this.socket.emit('feed', { id: t.id, slot: t.slot });
       this.target = null;
       return [0, 0];
     }
@@ -1126,8 +1246,9 @@ export class GameScene extends Phaser.Scene {
     const len = Math.hypot(dx, dy);
     const me = this.me;
     if (len > 0) {
-      me.x += (dx / len) * PLAYER_SPEED * dt;
-      me.y += (dy / len) * PLAYER_SPEED * dt;
+      const speed = PLAYER_SPEED * (ITEMS[this.gear.body?.id]?.speed ?? 1); // đồ nặng (Ba lô da lợn) làm đi chậm
+      me.x += (dx / len) * speed * dt;
+      me.y += (dy / len) * speed * dt;
       // Ra tới bờ biển thì trượt dọc theo bờ chứ không xuống nước.
       const land = clampToLand(this.seed, this.mapR, me.x, me.y);
       if (land) { me.x = land.x; me.y = land.y; }
@@ -1169,6 +1290,7 @@ export class GameScene extends Phaser.Scene {
       m.body.setFlipX(m.face < 0);
       if (m.type === 'deerclops') this.animBoss(m, moving, time);
       else if (m.type === 'spiderqueen') this.animQueen(m, moving, time);
+      else if (m.type === 'pig') this.animPig(m, moving, time, dt);
       else if (m.rig) this.animBeargerRig(m, moving, time);
       else if (m.type === 'bearger') this.animBearger(m, moving, time);
       else if (time >= (m.lungeUntil ?? 0)) m.c.scaleY = moving ? 1 + Math.sin(time * 0.03) * 0.07 : 1; // đang gồng cắn: để tween thu mình chạy
@@ -1268,6 +1390,28 @@ export class GameScene extends Phaser.Scene {
     m.body.setScale(QUEEN_SCALE).setFlipX(flip);
     // Ngủ: phồng xẹp nhẹ như đang thở
     m.c.scaleY = m.asleep ? 1 + Math.sin(time * 0.003) * 0.03 : 1;
+  }
+
+  // Lợn ghép mảnh: đấm (sau mỗi lần cắn, quay về phía người bị đánh) > chạy (đuổi đánh, đi nhanh) > đi > đứng thở.
+  animPig(m, moving, time, dt) {
+    // Vận tốc (pixel/giây) làm mượt: vị trí server gửi đã làm tròn nên từng khung giật hướng, cộng dồn ~0.25s mới ổn.
+    if (dt > 0) {
+      const k = Math.min(1, dt * 4);
+      m.svx += (m.vx / dt - m.svx) * k;
+      m.svy += (m.vy / dt - m.svy) * k;
+    }
+    const spd = Math.hypot(m.svx, m.svy);
+    m.spd += (spd - m.spd) * Math.min(1, dt * 6); // làm mượt để không nhảy qua lại giữa đi và chạy
+    let anim = 'idle';
+    if (time < (m.attackUntil ?? 0)) {
+      anim = 'slash';
+      if (m.aim && Math.hypot(m.aim[0], m.aim[1]) > 0.05) m.rigDir = dirOf(m.aim[0], m.aim[1], m.rigDir);
+    } else if (moving) {
+      anim = m.spd > PIG_RUN ? 'run' : 'walk';
+      if (spd > 8) m.rigDir = dirOfSticky(m.svx, m.svy, m.rigDir);
+    }
+    m.rig.set(m.rigDir, anim, time);
+    m.rig.update(time);
   }
 
   // Bearger ghép mảnh: cùng thứ tự ưu tiên như animBearger, nhưng chọn được 4 hướng.
@@ -1464,6 +1608,7 @@ export class GameScene extends Phaser.Scene {
     const view = this.overlayAt; // ánh sáng vẽ theo tọa độ bên trong lớp bóng tối
     const lights = [];
     for (const o of this.fires) lights.push([o.e.x, o.e.y - 10, fireRadius(o.e.fuel), o.e.id]);
+    for (const o of this.ents.values()) if (o.e.type === 'pighouse' && o.e.inside) lights.push([o.e.x, o.spr.winY, PIGHOUSE_LIGHT, o.e.id]);
     for (const pl of this.players.values()) {
       if (!pl.dead && pl.eq === 'torch') lights.push([pl.x, pl.y - 30, TORCH_RADIUS, pl.id]);
     }

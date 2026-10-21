@@ -1,7 +1,7 @@
 import {
-  CHUNK, SPAWN, CHARACTERS, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, PACK_SIZE, CHEST_SIZE, ACT_RANGE,
+  CHUNK, SPAWN, CHARACTERS, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, CHEST_SIZE, ACT_RANGE,
   TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, POISON, biomeAt, phaseAt, fireRadius, densIn,
-  coastDist, onLand, clampToLand,
+  coastDist, onLand, clampToLand, denAt, hash, DEN_CELL, VILLAGE, villageAt,
 } from '../shared/data.js';
 import { sanitizeSettings, clockOf, mapRadius } from '../shared/settings.js';
 
@@ -78,7 +78,32 @@ const QUEEN = {
   bite: { reach: 85, r: 115, windup: 550, dmg: 30, recover: 900 },
   spit: { min: 170, max: 460, w: 45, windup: 750, dmg: 10, cd: 6000, recover: 1000 },
   burst: { every: 4, r: 170, windup: 950, dmg: 15, recover: 1300 },
+  // Đổi mục tiêu (người / lợn đang đánh nó): mục tiêu hiện tại ngoài tầm cắn mà có con khác gần hơn switchRatio lần
+  // thì quay sang con đó; xét lại tối đa mỗi retarget ms để không quay qua quay lại liên tục.
+  retarget: 1200, switchRatio: 0.6,
 };
+// Làng lợn (VILLAGE, villageAt trong shared/data.js): tỉ lệ chance số ô lưới VILLAGE.cell có làng, đảo nào cũng có ít nhất
+// một làng. Quanh tâm làng là quần xã 'village' riêng (bán kính zone); mỗi làng minHouses–maxHouses Nhà lợn quây quanh tâm.
+// Người chơi cũng xây được Nhà lợn (công thức trong RECIPES), nhà tự xây giống hệt nhà ở làng.
+// Lợn sống trong Nhà lợn (m.house). Có người chơi trong spawnRange quanh nhà thì lợn ra ngoài (ban ngày); ban đêm lợn về nhà,
+// vào tới cửa thì biến mất vào trong (nhà sáng đèn) và hồi đầy máu, sáng hôm sau ra lại (door: cửa cách tâm nhà).
+// Ban ngày lợn đi lang thang không quá tether quanh nhà. Bị đánh thì đuổi đánh người đó, bỏ đuổi khi: người đó cách xa hơn
+// leash (MOBS.pig), lợn đã xa nhà hơn homeLeash, hoặc angerMs không cắn trúng lần nào (cắn trúng thì tính lại).
+// Lợn chết thì cfg.pigRespawn ngày sau nhà có lợn mới. Nhà bị đập: lợn (kể cả đang ở trong nhà) bị đuổi ra, giận người
+// cầm búa và thành lợn hoang (không nhà).
+const PIG = { spawnRange: 1500, homeLeash: 800, angerMs: 15000, tether: 350, door: 24, houseHits: 4 }; // houseHits: số nhát búa để sập nhà
+// Cho lợn ăn (kéo đồ ăn thả vào lợn): lợn đi theo người cho ăn foods[món] giây, cho ăn tiếp thì cộng dồn tới followMax giây.
+// Đang theo thì đánh giúp (trong bán kính assist quanh người dẫn): con người dẫn vừa đánh, quái đang nhắm người dẫn, nhện.
+// gap: đứng cách người dẫn chừng này thì thôi đi; lost: người dẫn ở xa hơn (vd. dịch chuyển) thì lợn bỏ theo.
+// Bán kính thân quái to: quái khác (lợn) đánh nó thì đứng ở mép thân, không chui vào giữa.
+const BODY_R = { spiderqueen: 60, deerclops: 75, bearger: 70, beefalo: 35 };
+// Quái cùng loại đứng sát hơn khoảng này thì bị đẩy giãn ra (để thấy rõ có mấy con, không dồn vào một điểm).
+const SPREAD = { hound: HOUND.spread, pig: 55 };
+const PIG_FOLLOW = {
+  foods: { meat: 120, cookedmeat: 120, monstermeat: 90, cookedmonstermeat: 90, morsel: 60, cookedmorsel: 60, jerky: 150, smalljerky: 75, meatballs: 180 },
+  followMax: 360, heal: 20, gap: 110, assist: 450, lost: 1500, hitMemo: 5000,
+};
+const PLACE_R = { pighouse: 60 }; // công trình cần chỗ trống rộng hơn mặc định (placeSpot)
 const ICEBOX_RATE = 0.5; // đồ trong Hộp Đá Lạnh cũ đi bằng chừng này so với bình thường
 const CONTAINERS = new Set(['chest', 'icebox']);
 // Công trình bỏ hoang: không có người chơi nào trong bán kính này suốt cfg.abandonDays ngày (giờ thế giới) thì mục nát,
@@ -118,7 +143,8 @@ const MOBS = {
   // neutral: đi lang thang, chỉ đánh lại người đánh nó. herd: cả đàn xung quanh cùng đánh lại.
   pig: {
     name: 'lợn', hp: 200, speed: 165, wander: 40, damage: 15, cooldown: 2000, leash: 600, neutral: true,
-    drops: [['meat', 1, 1]], perPlayer: 2, home: 'forest', safeFromSpawn: 0,
+    hates: ['spider', 'spiderling'], hateSight: 350, // thấy nhện trong hateSight là tự lao vào đánh
+    drops: [['meat', 1, 1], ['pigskin', 1, 0.4]], perPlayer: 0, // chỉ sống ở làng lợn (xem PIG)
   },
   beefalo: {
     name: 'bò lông', hp: 500, speed: 130, wander: 30, damage: 30, cooldown: 3000, leash: 500, neutral: true, herd: 350,
@@ -167,8 +193,9 @@ const SPAWN_TABLE = {
   meadow: [['grass', 30], ['sapling', 18], ['flower', 18], ['carrot', 10], ['bush', 10], ['tree', 6], ['boulder', 2]],
   forest: [['tree', 60], ['sapling', 12], ['grass', 6], ['bush', 4], ['boulder', 2]],
   rocky: [['boulder', 40], ['flint', 25], ['grass', 12], ['sapling', 10], ['tree', 3]],
+  village: [['flower', 30], ['grass', 25], ['carrot', 20], ['bush', 15], ['sapling', 10]], // làng lợn: thưa, không cây
 };
-const DENSITY = { meadow: 0.55, forest: 1, rocky: 0.6 };
+const DENSITY = { meadow: 0.55, forest: 1, rocky: 0.6, village: 0.12 };
 const ENTS_PER_CHUNK = 115;
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -257,6 +284,8 @@ export class Game {
     this.traps = new Set();
     this.dens = new Set(); // ổ Nhện chúa
     this.denCells = new Set(); // ô lưới đã đặt ổ (denAt), để không đặt trùng
+    this.pighouses = new Set(); // Nhà lợn
+    this.villageCells = new Set(); // ô lưới đã đặt làng lợn (villageAt)
     this.mobs = new Map();
     this.respawnQueue = [];
     this.t = Number(process.env.START_TIME) || 15; // START_TIME=200 để thử ban đêm
@@ -343,9 +372,15 @@ export class Game {
         this.dens.add(e);
         this.denCells.add(e.cell);
       }
+      if (e.type === 'pighouse') {
+        this.pighouses.add(e);
+        this.villageCells.add(e.village);
+      }
     }
     // Thế giới tạo trước khi có Nhện chúa: đặt ổ vào các chunk đã có.
     for (const key of this.chunks.keys()) this.placeDens(...key.split(',').map(Number));
+    // Thế giới tạo trước khi có làng lợn: đặt làng vào các chunk đã có (né công trình của người chơi).
+    for (const key of [...this.chunks.keys()]) this.placeVillages(...key.split(',').map(Number));
     this.saves = new Map(Object.entries(data.players ?? {}));
     console.log(`Đã nạp thế giới "${this.name}": ngày ${this.day}, ${this.chunks.size} chunk, ${this.ents.size} vật thể, ${this.saves.size} nhân vật.`);
   }
@@ -370,7 +405,7 @@ export class Game {
       const x = x0 + rand(0, CHUNK), y = y0 + rand(0, CHUNK);
       if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < 160) continue;
       if (coastDist(this.seed, this.mapR, x, y) < 25) continue; // không mọc dưới biển hay sát mép nước
-      const b = biomeAt(this.seed, x, y);
+      const b = biomeAt(this.seed, x, y, this.mapR, this.cfg.pigVillages);
       if (Math.random() > DENSITY[b]) continue;
       if (!this.spaceFree(x, y, 42)) continue;
       this.addEnt(pickWeighted(SPAWN_TABLE[b]), x, y);
@@ -388,6 +423,7 @@ export class Game {
       }
     }
     this.placeDens(cx, cy);
+    this.placeVillages(cx, cy);
     return set;
   }
 
@@ -401,6 +437,28 @@ export class Game {
         if (RESOURCE[e.type] && dist(e, d) < 90) this.removeEnt(e);
       }
       this.addEnt('spiderden', d.x, d.y, { cell: d.cell, queenAt: 0 });
+    }
+  }
+
+  // Đặt các làng lợn có tâm nằm trong chunk (cx, cy): dọn cây cỏ quanh từng nhà, bỏ nhà rơi sát biển
+  // hoặc đè lên công trình có sẵn.
+  placeVillages(cx, cy) {
+    if (!this.cfg.pigVillages) return;
+    const x0 = cx * CHUNK, y0 = cy * CHUNK;
+    for (let gy = Math.floor(y0 / VILLAGE.cell); gy <= Math.floor((y0 + CHUNK) / VILLAGE.cell); gy++) {
+      for (let gx = Math.floor(x0 / VILLAGE.cell); gx <= Math.floor((x0 + CHUNK) / VILLAGE.cell); gx++) {
+        const v = villageAt(this.seed, gx, gy, this.mapR);
+        if (!v || v.x < x0 || v.x >= x0 + CHUNK || v.y < y0 || v.y >= y0 + CHUNK || this.villageCells.has(v.cell)) continue;
+        this.villageCells.add(v.cell);
+        for (const h of v.houses) {
+          if (coastDist(this.seed, this.mapR, h.x, h.y) < 60) continue;
+          this.ensureChunk(...chunkOf(h.x, h.y)); // tạo chunk trước để dọn được cây mọc chỗ nhà
+          const near = [...this.entsNear(h.x, h.y, 70)].filter((e) => dist(e, h) < 70);
+          if (near.some((e) => !RESOURCE[e.type] && e.type !== 'drop')) continue;
+          for (const e of near) if (RESOURCE[e.type]) this.removeEnt(e);
+          this.addEnt('pighouse', h.x, h.y, { village: v.cell, pigAt: 0 });
+        }
+      }
     }
   }
 
@@ -433,6 +491,7 @@ export class Game {
     if (FIRES[type]) this.fires.add(e);
     if (type === 'trap') this.traps.add(e);
     if (type === 'spiderden') this.dens.add(e);
+    if (type === 'pighouse') this.pighouses.add(e);
     this.ents.set(e.id, e);
     this.ensureChunk(...chunkOf(e.x, e.y)).add(e);
     this.emitChunk(e, 'ent:add', pub(e));
@@ -446,6 +505,7 @@ export class Game {
     this.fires.delete(e);
     this.traps.delete(e);
     this.dens.delete(e);
+    this.pighouses.delete(e);
     this.chunks.get(chunkKey(...chunkOf(e.x, e.y)))?.delete(e);
     this.emitChunk(e, 'ent:del', e.id);
   }
@@ -488,11 +548,13 @@ export class Game {
   }
 
   // Tìm chỗ trống gần người chơi để đặt công trình.
-  placeSpot(p) {
+  // r: bán kính chỗ trống cần có (công trình to như nhà lợn cần rộng hơn, đặt cũng xa người hơn).
+  placeSpot(p, r = 36) {
     const offsets = [[0, 45], [55, 25], [-55, 25], [0, -50], [65, -35], [-65, -35], [0, 95], [95, 0], [-95, 0]];
+    const k = r / 36;
     for (const [dx, dy] of offsets) {
-      const x = p.x + dx, y = p.y + dy;
-      if (coastDist(this.seed, this.mapR, x, y) >= 20 && this.spaceFree(x, y, 36)) return { x, y };
+      const x = p.x + dx * k, y = p.y + dy * k;
+      if (coastDist(this.seed, this.mapR, x, y) >= 20 + r - 36 && this.spaceFree(x, y, r)) return { x, y };
     }
     return null;
   }
@@ -631,11 +693,13 @@ export class Game {
     }
   }
 
-  // Đeo ba lô: các ô của ba lô nối vào cuối túi đồ (p.inv dài thêm PACK_SIZE ô).
+  // Đeo ba lô: các ô của ba lô nối vào cuối túi đồ (p.inv dài thêm ITEMS[..].pack ô).
   packOn(p, it) {
-    if (!ITEMS[it.id].pack) return;
+    const size = ITEMS[it.id].pack;
+    if (!size) return;
     p.inv.length = INV_SIZE;
-    p.inv.push(...(it.slots ?? Array(PACK_SIZE).fill(null)));
+    const slots = it.slots ?? [];
+    p.inv.push(...Array.from({ length: size }, (_, i) => slots[i] ?? null));
     delete it.slots;
   }
 
@@ -812,6 +876,7 @@ export class Game {
       return;
     }
 
+    if (e.type === 'pighouse') return this.actPigHouse(p, e);
     if (STRUCTURES.has(e.type)) return this.actStructure(p, e);
 
     const r = RESOURCE[e.type];
@@ -934,10 +999,24 @@ export class Game {
     this.emit('fx', { k: 'pick', by: p.id });
   }
 
+  // Nhà lợn: chỉ đập được bằng búa. Lợn trong / quanh nhà bị đuổi ra và giận người đập.
+  actPigHouse(p, e) {
+    if (ITEMS[p.gear.hand?.id]?.tool !== 'hammer') return this.fail(p, 'Nhà của lợn. Cầm búa để đập lấy vật liệu.');
+    if (this.evictPig(e, p)) this.say(p, 'Ối, con lợn nổi giận rồi!');
+    // Phải đập đủ PIG.houseHits nhát mới sập; các nhát trước chỉ làm nhà rung.
+    e.hits = (e.hits ?? 0) + 1;
+    if (e.hits < PIG.houseHits) {
+      this.wear(p);
+      this.emit('fx', { k: 'chop', id: e.id, by: p.id });
+      return;
+    }
+    this.hammer(p, e);
+  }
+
   // Phá công trình (búa hoặc boss): rơi lại một nửa nguyên liệu và mọi thứ đang chứa bên trong.
   demolish(e) {
-    const recipe = RECIPES.find((r) => r.id === e.type);
-    for (const [id, n] of Object.entries(recipe?.needs ?? {})) {
+    const needs = RECIPES.find((r) => r.id === e.type)?.needs;
+    for (const [id, n] of Object.entries(needs ?? {})) {
       const back = Math.floor(n / 2);
       if (back > 0) this.spawnDrop(e.x + rand(-25, 25), e.y + rand(-10, 15), { id, count: back });
     }
@@ -950,7 +1029,8 @@ export class Game {
       this.say(q, 'Ơ, lều đâu mất rồi?');
     }
     this.removeEnt(e);
-    this.emit('fx', { k: 'die', x: e.x, y: e.y });
+    // Nhà lợn sập kèm đám khói (khoi.gif), công trình khác chỉ phụt khói nhỏ.
+    this.emit('fx', { k: e.type === 'pighouse' ? 'collapse' : 'die', x: e.x, y: e.y });
   }
 
   attackMob(p, m) {
@@ -967,7 +1047,11 @@ export class Game {
     if (def.meleeMul && !ranged) dmg = Math.round(dmg * def.meleeMul);
     m.hp -= dmg;
     m.target = p.id;
+    m.foe = null; // người chơi đánh thì quay sang đánh người, bỏ con quái đang đánh nhau
+    if (m.leader === p.id) m.leader = null; // đánh lợn đang theo mình: nó bỏ theo và giận
+    p.lastHit = { id: m.id, at: Date.now() }; // lợn đang theo p sẽ lao vào đánh giúp
     m.hitAt = Date.now();
+    m.angryAt = m.hitAt; // lợn: bị đánh thì giận lại từ đầu
     if (def.boss || def.elite) p.bossSafeLost = p.safeUntil; // đánh boss thì boss được đánh lại ngay
     if (m.act?.kind === 'eat') m.act = null; // Bearger đang ăn mà bị đánh thì bỏ ăn
     m.food = null;
@@ -984,26 +1068,52 @@ export class Game {
     if (def.herd) for (const o of this.mobs.values()) if (o.type === m.type && dist(o, m) < def.herd) o.target = p.id;
     this.emit('fx', { k: 'hit', id: m.id, n: dmg, by: ranged ? undefined : p.id, poison: dot || undefined });
     if (m.hp > 0) return false;
+    this.killMob(m, p);
+    return true;
+  }
+
+  // Quái đánh quái (lợn đánh nhện): con bị đánh quay sang đánh lại kẻ đánh nó (m.foe). Trả về true nếu chết.
+  mobDamageMob(a, m, dmg) {
+    const queen = m.type === 'spiderqueen';
+    const p = queen ? this.players.get(a.leader) ?? null : null; // lợn đang theo ai thì tính như người đó đánh
+    if (queen && m.asleep) this.wakeQueen(m, p);
+    m.hp -= dmg;
+    m.foe = a.id;
+    m.hitAt = Date.now();
+    if (queen) this.queenHurt(m, p);
+    this.emit('fx', { k: 'hit', id: m.id, n: dmg });
+    if (m.hp > 0) return false;
+    this.killMob(m, null);
+    return true;
+  }
+
+  // p: người chơi hạ con quái (null nếu quái khác giết).
+  killMob(m, p) {
+    const def = MOBS[m.type];
     this.mobs.delete(m.id);
     this.emit('fx', { k: m.type === 'spiderqueen' ? 'qdie' : 'die', x: m.x, y: m.y, big: def.boss || def.elite });
     for (const [id, n, chance] of def.drops) {
       if (Math.random() < chance) this.spawnDrop(m.x + rand(-40, 40), m.y + rand(-20, 20), { id, count: n });
     }
+    if (m.house) {
+      const house = this.ents.get(m.house);
+      if (house) house.pigAt = this.t + this.cfg.pigRespawn * this.dayLen;
+    }
     if (m.type === 'spiderqueen') {
       const den = this.ents.get(m.den);
       if (den) den.queenAt = this.t + this.cfg.queenRespawn * this.dayLen;
-      this.system(`👑 ${p.name} đã hạ gục Nhện chúa! Nhặt Độc nhện và Nanh nhện để chế vũ khí độc.`);
+      if (p) this.system(`👑 ${p.name} đã hạ gục Nhện chúa! Nhặt Độc nhện và Nanh nhện để chế vũ khí độc.`);
     }
     if (def.boss) {
       const b = BOSS_TYPES[m.type];
+      const who = p?.name ?? 'Đàn lợn';
       this.bossAt[m.type] = this.t + this.cfg.bossReturnKilled * this.dayLen;
       this.bossWarned[m.type] = 0;
       const before = this.bossLevel(m.type);
       this.bossKills[m.type]++;
-      this.emit('warn', { text: `${p.name} đã hạ gục ${def.name}! ${b.killed}`, big: true });
-      this.system(`🏆 ${p.name} đã hạ gục ${def.name}!${this.bossLevel(m.type) > before ? ` Lần sau nó sẽ quay lại mạnh hơn.` : ''}`);
+      this.emit('warn', { text: `${who} đã hạ gục ${def.name}! ${b.killed}`, big: true });
+      this.system(`🏆 ${who} đã hạ gục ${def.name}!${this.bossLevel(m.type) > before ? ` Lần sau nó sẽ quay lại mạnh hơn.` : ''}`);
     }
-    return true;
   }
 
   // ---------- Độc ----------
@@ -1253,7 +1363,7 @@ export class Game {
     }
     let spot = null;
     if (recipe.place) {
-      spot = this.placeSpot(p);
+      spot = this.placeSpot(p, PLACE_R[recipe.id]);
       if (!spot) return this.fail(p, 'Không đủ chỗ trống để đặt ở đây.');
     }
     for (const [id, n] of Object.entries(recipe.needs)) this.takeItem(p, id, n);
@@ -1264,6 +1374,7 @@ export class Game {
       if (recipe.id === 'trap') extra.caught = false;
       if (recipe.id === 'tent') extra.uses = TENT_USES;
       if (recipe.id === 'dryingrack') extra.dry = null;
+      if (recipe.id === 'pighouse') extra.pigAt = 0; // xây xong là có lợn ngay (ban ngày)
       this.addEnt(recipe.id, spot.x, spot.y, extra);
       this.sendInv(p);
     } else {
@@ -1347,6 +1458,63 @@ export class Game {
       p.socket.emit('teleport', { x: p.x, y: p.y });
       return;
     }
+    // /pigs: dịch chuyển tới gần làng lợn gần nhất (tạo chunk xung quanh nếu chưa có)
+    if (process.env.DEV === '1' && text === '/pigs') {
+      const gx0 = Math.floor(p.x / VILLAGE.cell), gy0 = Math.floor(p.y / VILLAGE.cell);
+      let best = null;
+      for (let gy = gy0 - 4; gy <= gy0 + 4; gy++) {
+        for (let gx = gx0 - 4; gx <= gx0 + 4; gx++) {
+          const v = villageAt(this.seed, gx, gy, this.mapR);
+          if (v && (!best || dist(v, p) < dist(best, p))) best = v;
+        }
+      }
+      if (!best) return this.fail(p, 'Không tìm thấy làng lợn nào gần đây.');
+      this.ensureChunk(...chunkOf(best.x, best.y));
+      p.x = best.x;
+      p.y = best.y + 40; // giữa làng, các nhà quây quanh
+      p.allow = 0;
+      this.updateChunks(p);
+      p.socket.emit('teleport', { x: p.x, y: p.y });
+      return;
+    }
+    // /time day|dusk|night: tua thời gian tới đầu buổi đó (chỉ tua tới, không lùi; hẹn giờ hồi sinh cũng chạy theo)
+    const timeCmd = text.match(/^\/time\s+(day|dusk|night)$/);
+    if (process.env.DEV === '1' && timeCmd) {
+      const { len, dayEnd, duskEnd } = this.clock;
+      const base = Math.floor(this.t / len) * len;
+      let t = base + { day: 0, dusk: dayEnd, night: duskEnd }[timeCmd[1]] + 0.5;
+      if (t <= this.t) t += len;
+      this.t = t;
+      return;
+    }
+    // /spawn <loại quái> [số con]: thả quái quanh mình, vd. /spawn spider 3 để xem lợn đánh nhện. Boss dùng /boss.
+    const spawnCmd = text.match(/^\/spawn\s+(\w+)(?:\s+(\d+))?$/);
+    if (process.env.DEV === '1' && spawnCmd) {
+      const type = spawnCmd[1].toLowerCase();
+      const def = MOBS[type];
+      if (!def || def.boss || type === 'spiderqueen') {
+        return this.fail(p, `Không thả được "${type}". Có: ${Object.keys(MOBS).filter((k) => !MOBS[k].boss && k !== 'spiderqueen').join(', ')}.`);
+      }
+      const n = Math.max(1, Math.min(20, Number(spawnCmd[2]) || 1));
+      for (let i = 0; i < n; i++) {
+        const a = rand(0, Math.PI * 2), r = rand(200, 320);
+        this.spawnMob(type, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, {});
+      }
+      return;
+    }
+    // /pigkit: đủ đồ để thử nhà lợn: xây Máy Khoa Học + 2 Nhà lợn, búa để đập, thịt để cho lợn ăn, giáo để giết lợn lấy da
+    if (process.env.DEV === '1' && text === '/pigkit') {
+      const kit = { gold: 1, log: 4, rocks: 4, boards: 8, cutstone: 6, pigskin: 8, hammer: 1, spear: 1, meat: 10, monstermeat: 5, morsel: 5 };
+      for (const [id, n] of Object.entries(kit)) this.give(p, id, n);
+      return;
+    }
+    // /pigreset: nhà lợn quanh mình (2000) có lợn lại ngay, bỏ qua thời gian chờ sau khi lợn chết
+    if (process.env.DEV === '1' && text === '/pigreset') {
+      let n = 0;
+      for (const h of this.pighouses) if (dist(h, p) < 2000 && this.t < (h.pigAt ?? 0)) { h.pigAt = 0; n++; }
+      this.say(p, n ? `${n} nhà lợn sẽ có lợn lại (ban ngày).` : 'Quanh đây không có nhà lợn nào đang chờ lợn mới.');
+      return;
+    }
     if (process.env.DEV === '1' && text.startsWith('/give ')) {
       const [, id, n] = text.split(/\s+/);
       if (ITEMS[id]) this.give(p, id, Math.max(1, Math.min(200, Number(n) || 1)));
@@ -1391,7 +1559,7 @@ export class Game {
       const boss = this.nearestBoss(p);
       const ms = [];
       // Phần tử thứ 5 của quái: 1 = đang ngủ (Nhện chúa).
-      for (const m of this.mobs.values()) if (near(m)) ms.push([m.id, m.type, Math.round(m.x), Math.round(m.y), m.asleep ? 1 : 0]);
+      for (const m of this.mobs.values()) if (near(m)) ms.push([m.id, m.type, Math.round(m.x), Math.round(m.y), m.asleep ? 1 : 0, m.leader ? 1 : 0]);
       const bs = [];
       for (const b of this.booms.values()) if (near(b)) bs.push([b.id, Math.round(b.x), Math.round(b.y), b.owner, b.item.id]);
       const snap = { t, p: ps, m: ms, b: bs };
@@ -1498,21 +1666,27 @@ export class Game {
       else if (def.boss) this.updateBoss(m, def, dt, now);
       else if (m.type === 'spiderqueen') this.updateQueen(m, def, dt, now);
       else if (m.den) this.updateSpiderling(m, def, dt, now, phase);
+      else if (m.type === 'pig') this.updatePig(m, def, dt, now, phase);
       else if (def.hostile) this.updateHostile(m, def, dt, now, phase);
       else if (def.neutral) this.updateNeutral(m, def, dt, now);
       else this.updatePassive(m, def, dt, now);
     }
 
-    // Đẩy các con chó săn đứng quá sát nhau ra, để cả đàn không dồn vào một điểm rồi cắn cùng lúc.
-    const hounds = [...this.mobs.values()].filter((m) => m.type === 'hound');
-    for (let i = 0; i < hounds.length; i++) {
-      for (let j = i + 1; j < hounds.length; j++) {
-        const a = hounds[i], b = hounds[j];
-        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-        if (d >= HOUND.spread) continue;
-        const ux = d ? dx / d : 1, uy = d ? dy / d : 0, push = (HOUND.spread - d) / 2;
-        a.x -= ux * push; a.y -= uy * push;
-        b.x += ux * push; b.y += uy * push;
+    // Đẩy các con chó săn / lợn đứng quá sát nhau ra: đàn chó không dồn vào một điểm rồi cắn cùng lúc,
+    // lợn đi theo / đánh chung một con không chồng lên nhau.
+    for (const [type, spread] of Object.entries(SPREAD)) {
+      const group = [...this.mobs.values()].filter((m) => m.type === type);
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const a = group[i], b = group[j];
+          const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+          if (d >= spread) continue;
+          // trùng hẳn một điểm: tách theo hướng ngẫu nhiên
+          const ang = d ? 0 : rand(0, Math.PI * 2);
+          const ux = d ? dx / d : Math.cos(ang), uy = d ? dy / d : Math.sin(ang), push = (spread - d) / 2;
+          a.x -= ux * push; a.y -= uy * push;
+          b.x += ux * push; b.y += uy * push;
+        }
       }
     }
 
@@ -1916,7 +2090,20 @@ export class Game {
     m.y += m.vy * dt;
   }
 
+  // Đang bị quái khác đánh (m.foe, vd. lợn) thì đánh lại nó tới khi nó chết hoặc chạy xa.
+  fightFoe(m, def, dt, now) {
+    if (!m.foe) return false;
+    const foe = this.mobs.get(m.foe);
+    if (!foe || dist(foe, m) > (def.leash ?? 700)) {
+      m.foe = null;
+      return false;
+    }
+    this.chase(m, def, foe, dt, now);
+    return true;
+  }
+
   updateHostile(m, def, dt, now, phase) {
+    if (this.fightFoe(m, def, dt, now)) return;
     let tgt = m.target ? this.players.get(m.target) : null;
     if (!tgt || tgt.dead || dist(tgt, m) > (def.leash ?? 700)) {
       tgt = null;
@@ -1982,16 +2169,17 @@ export class Game {
     m.summoned = 0;
     m.atk = Date.now() + 700; // vừa tỉnh còn ngơ ngác một chút
     this.emit('fx', { k: 'qwake', id: m.id });
-    this.say(p, 'Nhện chúa thức giấc rồi!');
+    if (p) this.say(p, 'Nhện chúa thức giấc rồi!');
   }
 
   // Nhện chúa bị đánh: nhện con quanh ổ lao vào người đánh; tụt qua các mốc máu thì gọi thêm nhện con.
+  // p: người đánh (null nếu lợn hoang đánh): nhện con chỉ lao vào người, lợn thì tự lo.
   queenHurt(m, p) {
-    for (const o of this.mobs.values()) if (o.den === m.den && o !== m && dist(o, p) < QUEEN.babyLeash) o.target = p.id;
+    if (p) for (const o of this.mobs.values()) if (o.den === m.den && o !== m && dist(o, p) < QUEEN.babyLeash) o.target = p.id;
     const den = this.ents.get(m.den);
     while (den && m.hp > 0 && (m.summoned ?? 0) < QUEEN.summonAt.length && m.hp / m.maxHp <= QUEEN.summonAt[m.summoned ?? 0]) {
       m.summoned = (m.summoned ?? 0) + 1;
-      for (let i = 0; i < QUEEN.summonN; i++) this.spawnBaby(den, p.id);
+      for (let i = 0; i < QUEEN.summonN; i++) this.spawnBaby(den, p?.id);
       this.emit('fx', { k: 'qsummon', id: m.id });
     }
   }
@@ -2009,10 +2197,10 @@ export class Game {
       return;
     }
 
-    let tgt = this.bossTarget(m, def, now);
+    let tgt = this.queenTarget(m, def, now);
     if (tgt && den && dist(tgt, den) > Q.leash) {
       tgt = null;
-      m.target = null;
+      m.target = m.targetMob = null;
     }
     if (!tgt) {
       // Về ổ, nằm yên một lúc thì ngủ lại và hồi đầy máu.
@@ -2057,7 +2245,37 @@ export class Game {
     }
   }
 
-  // Ra đòn sau khi gồng xong: ai trong vùng thì mất máu (qua giáp) và trúng độc (bỏ qua giáp).
+  // Mục tiêu của Nhện chúa: người chơi (m.target) hoặc lợn đang đánh nó (m.targetMob). Giữ mục tiêu cũ, trừ khi nó ở
+  // ngoài tầm cắn (vd. người chạy ra xa đứng ném) mà có con khác gần hơn hẳn (QUEEN.switchRatio): khi đó quay sang cắn con kia.
+  queenTarget(m, def, now) {
+    const Q = QUEEN;
+    const okPlayer = (p) => p && this.bossCanHit(p, now) && dist(p, m) <= def.leash;
+    const okPig = (o) => o && this.mobs.get(o.id) === o && dist(o, m) <= def.leash;
+    let cur = m.targetMob ? this.mobs.get(m.targetMob) : m.target ? this.players.get(m.target) : null;
+    if (!(m.targetMob ? okPig(cur) : okPlayer(cur))) cur = null;
+    if (!cur || (now >= (m.retargetAt ?? 0) && dist(cur, m) > Q.bite.reach)) {
+      m.retargetAt = now + Q.retarget;
+      let best = cur, isPig = cur ? !!m.targetMob : false;
+      let bd = cur ? dist(cur, m) * Q.switchRatio : def.sight;
+      for (const p of this.players.values()) {
+        if (p === cur || !okPlayer(p)) continue;
+        const d = dist(p, m);
+        if (d < bd) { bd = d; best = p; isPig = false; }
+      }
+      for (const o of this.mobs.values()) {
+        // chỉ lợn đang đánh nó (lợn hiền đi ngang không bị nhắm)
+        if (o === cur || o.type !== 'pig' || (o.foe !== m.id && o.prey !== m.id) || !okPig(o)) continue;
+        const d = dist(o, m);
+        if (d < bd) { bd = d; best = o; isPig = true; }
+      }
+      cur = best;
+      m.target = cur && !isPig ? cur.id : null;
+      m.targetMob = cur && isPig ? cur.id : null;
+    }
+    return cur;
+  }
+
+  // Ra đòn sau khi gồng xong: ai trong vùng thì mất máu (qua giáp) và trúng độc (bỏ qua giáp). Lợn trong vùng cũng mất máu.
   queenStrike(m, a, now) {
     const Q = QUEEN;
     const hit = (p, dmg) => {
@@ -2065,19 +2283,25 @@ export class Game {
       this.bossHit(p, m, dmg, now);
       this.poisonPlayer(p, now);
     };
+    // Sát thương đòn này lên thứ đứng ở (x, y), 0 nếu ngoài vùng.
+    const dmgAt = (x, y) => {
+      const dx = x - m.x, dy = y - m.y;
+      if (a.kind === 'bite') return Math.hypot(dx, dy) < Q.bite.r && dx * a.dx + dy * a.dy > -20 ? Q.bite.dmg : 0; // chỉ nửa phía trước
+      if (a.kind === 'burst') return Math.hypot(dx, dy) < Q.burst.r ? Q.burst.dmg : 0;
+      // Phun: khoảng cách tới đường phun (tính từ chỗ đứng lúc gồng).
+      const px = x - a.x, py = y - a.y;
+      const along = px * a.dx + py * a.dy, across = Math.abs(px * a.dy - py * a.dx);
+      return along > 0 && along < a.len && across < a.w ? Q.spit.dmg : 0;
+    };
     for (const p of this.players.values()) {
       if (p.dead) continue;
-      const dx = p.x - m.x, dy = p.y - m.y;
-      if (a.kind === 'bite') {
-        if (Math.hypot(dx, dy) < Q.bite.r && dx * a.dx + dy * a.dy > -20) hit(p, Q.bite.dmg); // chỉ nửa phía trước
-      } else if (a.kind === 'burst') {
-        if (Math.hypot(dx, dy) < Q.burst.r) hit(p, Q.burst.dmg);
-      } else if (a.kind === 'spit') {
-        // Khoảng cách tới đường phun (tính từ chỗ đứng lúc gồng).
-        const px = p.x - a.x, py = p.y - a.y;
-        const along = px * a.dx + py * a.dy, across = Math.abs(px * a.dy - py * a.dx);
-        if (along > 0 && along < a.len && across < a.w) hit(p, Q.spit.dmg);
-      }
+      const dmg = dmgAt(p.x, p.y);
+      if (dmg) hit(p, dmg);
+    }
+    for (const o of [...this.mobs.values()]) {
+      if (o.type !== 'pig') continue;
+      const dmg = dmgAt(o.x, o.y);
+      if (dmg) this.mobDamageMob(m, o, dmg);
     }
     if (a.kind === 'spit') m.spitAt = now + Q.spit.cd;
     m.atk = now + Q[a.kind].recover;
@@ -2101,7 +2325,199 @@ export class Game {
     this.updateHostile(m, def, dt, now, phase);
   }
 
-  // Lợn, bò lông: hiền, chỉ đuổi đánh người vừa đánh nó cho tới khi người đó chạy xa.
+  // ---------- Làng lợn ----------
+
+  // Mỗi giây: nhà có lợn (chưa chết hoặc đã tới lúc có con mới) và có người chơi ở gần thì ban ngày lợn ra ngoài.
+  // Ban đêm lợn còn sống mà không ở ngoài thì đang ở trong nhà: nhà sáng đèn (e.inside).
+  // Không ai ở gần thì lợn tự bị xóa như mọi quái khác (MOB_DESPAWN), lần sau tới gần lại ra với đầy máu.
+  updatePigHouses(phase) {
+    if (!this.pighouses.size) return;
+    const pigs = new Map();
+    for (const m of this.mobs.values()) if (m.house) pigs.set(m.house, m);
+    for (const house of this.pighouses) {
+      const alive = this.t >= (house.pigAt ?? 0);
+      let pig = pigs.get(house.id);
+      if (!pig && alive && phase !== 'night') {
+        let near = false;
+        for (const p of this.players.values()) if (!p.dead && p.ready && dist(p, house) < PIG.spawnRange) { near = true; break; }
+        if (near) pig = this.spawnMob('pig', house.x, house.y + PIG.door, { house: house.id });
+      }
+      const inside = phase === 'night' && alive && !pig;
+      if (!!house.inside !== inside) {
+        house.inside = inside;
+        this.updEnt(house);
+      }
+    }
+  }
+
+  // Đuổi lợn của nhà ra (nhà sắp bị đập): lợn đang ở trong nhà thì cho ra cửa. Lợn thành lợn hoang và giận p.
+  // Trả về con lợn (null nếu nhà không có lợn, vd. lợn đã chết chưa có con mới).
+  evictPig(house, p) {
+    let pig = null;
+    for (const m of this.mobs.values()) if (m.house === house.id) pig = m;
+    if (!pig && this.t >= (house.pigAt ?? 0)) pig = this.spawnMob('pig', house.x, house.y + PIG.door, { house: house.id });
+    if (!pig) return null;
+    // Lợn vẫn thuộc nhà này (nhà không đẻ thêm con khác); hết giận thì về, nhà sập thì thành lợn hoang.
+    pig.target = p.id;
+    pig.angryAt = Date.now();
+    return pig;
+  }
+
+  updatePig(m, def, dt, now, phase) {
+    const house = m.house ? this.ents.get(m.house) : null;
+    if (m.house && !house) m.house = null;
+    const tgt = m.target ? this.players.get(m.target) : null;
+    if (tgt && !tgt.dead && dist(tgt, m) <= def.leash && now - (m.angryAt ?? 0) <= PIG.angerMs
+      && !(house && !m.leader && dist(m, house) > PIG.homeLeash)) {
+      const atk = m.atk;
+      this.chase(m, def, tgt, dt, now);
+      if (m.atk !== atk) m.angryAt = now; // cắn trúng: giận thêm
+      return;
+    }
+    m.target = null;
+    const leader = this.pigLeader(m, now);
+    if (leader) return this.followLeader(m, def, leader, dt, now);
+    const prey = this.pigPrey(m, def, house);
+    if (prey) return this.chase(m, def, prey, dt, now);
+    if (!house) return this.wander(m, def, dt, now);
+    // Ban đêm về nhà, tới cửa thì vào trong.
+    if (phase === 'night') {
+      const door = { x: house.x, y: house.y + PIG.door * 0.5 };
+      const d = dist(m, door);
+      if (d < 16) {
+        this.mobs.delete(m.id);
+        house.inside = true;
+        this.updEnt(house);
+        return;
+      }
+      const v = def.speed * 0.5;
+      m.vx = ((door.x - m.x) / d) * v;
+      m.vy = ((door.y - m.y) / d) * v;
+      m.x += m.vx * dt;
+      m.y += m.vy * dt;
+      return;
+    }
+    // Ban ngày đi quanh nhà; lỡ đi xa (vd. vừa bỏ đuổi) thì quay về.
+    const far = dist(m, house) > PIG.tether;
+    if (far && !m.homing) m.wt = 0;
+    m.homing = far;
+    this.wander(m, def, dt, now, far ? house : null);
+  }
+
+  // Người lợn đang đi theo (hết giờ, người đó chết / đi quá xa thì thôi).
+  pigLeader(m, now) {
+    if (!m.leader) return null;
+    const p = this.players.get(m.leader);
+    if (p && !p.dead && now < m.followUntil && dist(p, m) < PIG_FOLLOW.lost) return p;
+    m.leader = null;
+    m.wt = 0;
+    return null;
+  }
+
+  // Lợn đi theo người cho ăn: có quái cần đánh giúp thì đánh, không thì bám theo sau, cách một khoảng.
+  followLeader(m, def, p, dt, now) {
+    const foe = this.pigAssist(m, def, p, now);
+    if (foe) return this.chase(m, def, foe, dt, now);
+    const d = dist(m, p);
+    if (d <= PIG_FOLLOW.gap) {
+      m.vx = m.vy = 0;
+      return;
+    }
+    const v = d > 300 ? Math.max(def.speed, PLAYER_SPEED * 1.05) : def.speed * 0.8; // tụt lại xa thì chạy cho kịp
+    m.vx = ((p.x - m.x) / d) * v;
+    m.vy = ((p.y - m.y) / d) * v;
+    m.x += m.vx * dt;
+    m.y += m.vy * dt;
+  }
+
+  // Quái lợn đang theo p cần đánh: con đang đánh dở > con p vừa đánh > quái đang nhắm p / nhện gần lợn (con gần nhất).
+  // Chỉ xét trong PIG_FOLLOW.assist quanh p, để lợn không bỏ người dẫn đuổi đi quá xa. Không đánh lợn khác cùng theo p.
+  pigAssist(m, def, p, now) {
+    const ok = (o) => o && o !== m && !(o.type === 'pig' && o.leader === p.id) && dist(o, p) < PIG_FOLLOW.assist;
+    for (const id of [m.foe, m.prey]) {
+      const o = id ? this.mobs.get(id) : null;
+      if (ok(o)) return o;
+    }
+    m.foe = m.prey = null;
+    let best = p.lastHit && now - p.lastHit.at < PIG_FOLLOW.hitMemo ? this.mobs.get(p.lastHit.id) : null;
+    if (!ok(best)) {
+      best = null;
+      let bd = Infinity;
+      for (const o of this.mobs.values()) {
+        if (!ok(o)) continue;
+        const d = dist(o, m);
+        if (o.target !== p.id && !(def.hates.includes(o.type) && d < def.hateSight)) continue;
+        if (d < bd) { bd = d; best = o; }
+      }
+    }
+    if (best) m.prey = best.id;
+    return best;
+  }
+
+  // Kéo đồ ăn trong túi thả vào lợn: lợn ăn (hồi chút máu) rồi đi theo người cho ăn (PIG_FOLLOW).
+  onFeed(p, d) {
+    if (p.dead) return;
+    const slot = Number(d?.slot);
+    const it = p.inv[slot];
+    const m = this.mobs.get(Number(d?.id));
+    if (!it || !m || dist(p, m) > ACT_RANGE) return;
+    if (m.type !== 'pig') return this.fail(p, 'Con này không ăn đồ mình đưa đâu.');
+    const secs = PIG_FOLLOW.foods[it.id];
+    if (!secs) return this.fail(p, 'Lợn chỉ ăn thịt thôi.');
+    if (m.target) return this.fail(p, 'Con lợn đang giận, không chịu ăn.');
+    this.consumeSlot(p, slot);
+    const now = Date.now();
+    const from = m.leader === p.id ? Math.max(now, m.followUntil) : now;
+    m.leader = p.id;
+    m.followUntil = Math.min(from + secs * 1000, now + PIG_FOLLOW.followMax * 1000);
+    m.hp = Math.min(MOBS.pig.hp, m.hp + PIG_FOLLOW.heal);
+    this.emit('fx', { k: 'feed', id: m.id, by: p.id });
+    this.say(p, `Lợn sẽ đi theo mình khoảng ${Math.round((m.followUntil - now) / 60000 * 10) / 10} phút.`);
+    this.sendInv(p);
+  }
+
+  // Kéo thả trong túi đồ: thả lên ô cùng loại thì gộp (tới đủ chồng), ô khác thì đổi chỗ.
+  onSwap(p, d) {
+    if (p.dead) return;
+    const from = Number(d?.from), to = Number(d?.to);
+    const n = p.inv.length;
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= n || to >= n) return;
+    const a = p.inv[from], b = p.inv[to];
+    if (!a) return;
+    const stack = ITEMS[a.id].stack;
+    if (b && b.id === a.id && stack > 1 && b.count < stack) {
+      const k = Math.min(a.count, stack - b.count);
+      b.age = ((b.age ?? 0) * b.count + (a.age ?? 0) * k) / (b.count + k); // trộn độ cũ như addToSlots
+      b.count += k;
+      a.count -= k;
+      if (a.count <= 0) p.inv[from] = null;
+    } else {
+      p.inv[from] = b;
+      p.inv[to] = a;
+    }
+    this.sendInv(p);
+  }
+
+  // Lợn ghét nhện: giữ con đang đánh (m.foe: nó đánh lợn trước, hoặc m.prey: lợn tự chọn) tới khi nó chết / chạy quá
+  // leash / kéo lợn đi quá xa nhà; không có thì tìm con nhện gần nhất trong hateSight.
+  pigPrey(m, def, house) {
+    const ok = (o) => o && dist(o, m) <= def.leash && !(house && dist(m, house) > PIG.homeLeash);
+    for (const id of [m.foe, m.prey]) {
+      const o = id ? this.mobs.get(id) : null;
+      if (ok(o)) return o;
+    }
+    m.foe = m.prey = null;
+    let best = null, bd = def.hateSight;
+    for (const o of this.mobs.values()) {
+      if (!def.hates.includes(o.type)) continue;
+      const d = dist(o, m);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (best && ok(best)) m.prey = best.id;
+    return m.prey ? best : null;
+  }
+
+  // Bò lông: hiền, chỉ đuổi đánh người vừa đánh nó cho tới khi người đó chạy xa.
   updateNeutral(m, def, dt, now) {
     const tgt = m.target ? this.players.get(m.target) : null;
     if (!tgt || tgt.dead || dist(tgt, m) > def.leash) {
@@ -2121,15 +2537,11 @@ export class Game {
       m.lunge = 0;
       if (stale) return;
       m.atk = now + def.cooldown;
-      if (d <= def.biteRange) {
-        this.emit('fx', { k: 'bite', id: m.id });
-        this.hurt(tgt, def.damage, def.name, { armored: true });
-      } else {
-        this.emit('fx', { k: 'miss', id: m.id });
-      }
+      if (d <= def.biteRange) this.strike(m, def, tgt);
+      else this.emit('fx', { k: 'miss', id: m.id });
       return;
     }
-    if (d > 34) {
+    if (d > 34 + (BODY_R[tgt.type] ?? 0)) {
       m.x += (dx / d) * def.speed * dt;
       m.y += (dy / d) * def.speed * dt;
     } else if (now >= m.atk) {
@@ -2139,9 +2551,15 @@ export class Game {
         return;
       }
       m.atk = now + def.cooldown;
-      this.emit('fx', { k: 'bite', id: m.id });
-      this.hurt(tgt, def.damage, def.name, { armored: true });
+      this.strike(m, def, tgt);
     }
+  }
+
+  // Cú cắn / đấm trúng: tgt là người chơi hoặc quái khác (lợn đánh nhện). ax, ay: chỗ bị đánh, để client quay về đó.
+  strike(m, def, tgt) {
+    this.emit('fx', { k: 'bite', id: m.id, ax: Math.round(tgt.x), ay: Math.round(tgt.y) });
+    if (this.mobs.get(tgt.id) === tgt) this.mobDamageMob(m, tgt, def.damage);
+    else this.hurt(tgt, def.damage, def.name, { armored: true });
   }
 
   updatePassive(m, def, dt, now) {
@@ -2183,7 +2601,7 @@ export class Game {
       if (CONTAINERS.has(e.type) && e.slots) {
         if (ageSlots(e.slots, (e.type === 'icebox' ? ICEBOX_RATE : 1) * spoil) || (sync && e.slots.some((it) => it && ITEMS[it.id].perish))) this.updEnt(e);
       }
-      if (STRUCTURES.has(e.type) && this.cfg.abandonDays > 0) this.updateAbandon(e);
+      if (STRUCTURES.has(e.type) && !e.village && this.cfg.abandonDays > 0) this.updateAbandon(e);
     }
     for (const p of this.players.values()) {
       if (ageSlots(p.inv, spoil) || (sync && p.inv.some((it) => it && ITEMS[it.id].perish))) this.sendInv(p);
@@ -2208,6 +2626,7 @@ export class Game {
     this.updateHounds();
     this.updateBossSchedule();
     this.updateDens();
+    this.updatePigHouses(phase);
     this.slowCount = (this.slowCount ?? 0) + 1;
     if (this.slowCount % 10 === 0) this.emit('roster', this.roster()); // cập nhật số ngày sống sót mỗi 10 giây
 
@@ -2253,7 +2672,7 @@ export class Game {
         for (let i = 0; i < 10; i++) {
           const a = rand(0, Math.PI * 2), r = rand(800, 1300);
           const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
-          if (biomeAt(this.seed, x, y, this.mapR) !== def.home) continue;
+          if (biomeAt(this.seed, x, y, this.mapR, this.cfg.pigVillages) !== def.home) continue;
           if (Math.hypot(x - SPAWN.x, y - SPAWN.y) < def.safeFromSpawn) continue;
           if ([...this.players.values()].some((q) => Math.hypot(q.x - x, q.y - y) < 600)) continue;
           this.spawnMob(type, x, y, { resident: true });
