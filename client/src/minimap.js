@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 // Bán kính khung nhìn của bản đồ (pixel thế giới, tính từ tâm ra mép), từ gần tới xa.
 const RANGES = [1200, 2400, 4800, 9600, 19200, 38400];
 const CELLS = 96; // số ô địa hình theo mỗi cạnh bản đồ
-const HOSTILE = new Set(['spider', 'spiderling', 'spiderqueen', 'hound', 'deerclops', 'bearger']);
+const HOSTILE = new Set(['spider', 'spider_warrior', 'spiderling', 'spiderqueen', 'hound', 'deerclops', 'bearger']);
 const BOSSES = new Set(['deerclops', 'bearger', 'spiderqueen']);
 const BUILDINGS = new Set([...Object.keys(STATIONS), 'chest', 'icebox', 'tent', 'dryingrack', 'trap']);
 const FONT = 'Segoe UI, Tahoma, sans-serif';

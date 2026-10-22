@@ -1,18 +1,21 @@
-// Trang thử nhân vật ghép mảnh 4 hướng (bản dev: http://localhost:5173/stick.html): người que, lợn.
+// Trang thử nhân vật ghép mảnh 4 hướng (bản dev: http://localhost:5173/stick.html): người que, lợn, cô bé.
 // Các nhân vật dùng chung khung xương / hoạt ảnh (biped.js) với 3 góc nhìn: ngang, thẳng, lưng; nút Nhân vật để đổi qua lại.
-// Mảnh hình: client/public/stick (node tools/crop-stick.mjs), client/public/pig (node tools/crop-pig.mjs).
+// Mảnh hình: client/public/stick (node tools/crop-stick.mjs), client/public/pig (node tools/crop-pig.mjs),
+// client/public/girl (node tools/crop-girl.mjs). Nút Mặt đổi nét mặt khi nhìn thẳng (nhân vật nào có faces).
 // WASD hoặc mũi tên: đi 4 hướng; giữ Shift: chạy; Space / J: chém (đang chạy thì vừa chạy vừa chém); thả phím: đứng thở.
 import Phaser from 'phaser';
 import { DirectionalRig, dirOf } from './directional.js';
 import { equipWeapon, attackOf } from './biped.js';
 import { STICK_RIGS, STICK_HEIGHT, STICK_IMAGES, makeStickTextures } from './stick.js';
 import { PIG_RIGS, PIG_HEIGHT, PIG_IMAGES } from './pig.js';
+import { GIRL_RIGS, GIRL_HEIGHT, GIRL_IMAGES, GIRL_FACES, setGirlFace } from './girl.js';
 
 // rigs: { side, front, back }, height: chiều cao (pixel ảnh gốc) để quy ra cỡ hiển thị,
-// images: [texture, đường dẫn trong public]
+// images: [texture, đường dẫn trong public], faces / setFace: các nét mặt và cách đổi (không bắt buộc)
 const CHARACTERS = {
   stick: { label: 'Người que', rigs: STICK_RIGS, height: STICK_HEIGHT, images: STICK_IMAGES },
   pig: { label: 'Lợn', rigs: PIG_RIGS, height: PIG_HEIGHT, images: PIG_IMAGES },
+  girl: { label: 'Cô bé', rigs: GIRL_RIGS, height: GIRL_HEIGHT, images: GIRL_IMAGES, faces: GIRL_FACES, setFace: setGirlFace },
 };
 const DIR_NAMES = { right: 'Phải', left: 'Trái', down: 'Xuống', up: 'Lên' };
 const PLAYER_H = 68; // chiều cao nhân vật trong game (ART_HEIGHT.player trong GameScene)
@@ -63,7 +66,14 @@ class Preview extends Phaser.Scene {
     if (at) this.big.moveTo(...at);
     this.big.showJoints(this.joints);
     document.querySelectorAll('#chars button').forEach((el) => el.classList.toggle('on', el.dataset.char === id));
+    showFaces(CHARACTERS[id]);
     this.setWeapon(this.weapon);
+  }
+
+  setFace(name) {
+    const c = CHARACTERS[this.char];
+    for (const r of this.pair) c.setFace(r, name);
+    document.querySelectorAll('#faces button').forEach((el) => el.classList.toggle('on', el.dataset.face === name));
   }
 
   setWeapon(id) {
@@ -141,6 +151,16 @@ const addButtons = (boxId, items, attr, onClick) => {
   }
 };
 addButtons('chars', Object.entries(CHARACTERS).map(([id, c]) => [id, c.label]), 'char', (c) => scene().setCharacter(c));
+// Nút nét mặt theo nhân vật đang chọn; ẩn nếu nhân vật không có.
+function showFaces(c) {
+  const box = document.getElementById('faces');
+  box.replaceChildren();
+  document.getElementById('faces-label').hidden = !c.faces;
+  if (!c.faces) return;
+  addButtons('faces', c.faces, 'face', (f) => scene().setFace(f));
+  box.firstChild.classList.add('on');
+  for (const r of [scene().big, scene().small]) c.setFace(r, c.faces[0][0]);
+}
 addButtons('dirs', Object.entries(DIR_NAMES), 'dir', (d) => scene().setDir(d));
 addButtons('anims', Object.entries(ANIM_NAMES), 'anim', (a) => scene().setAnim(a));
 addButtons('weapons', WEAPON_NAMES, 'weapon', (w) => scene().setWeapon(w));

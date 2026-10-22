@@ -317,6 +317,34 @@ export function makeTextures(scene) {
     g.fillRect(24, 15, 6, 8);
   });
 
+  // Tường đá: khối đá xếp gạch, rộng hơn ô lưới 2px để các đoạn liền nhau không hở. Mặt trên sáng, mặt trước xếp
+  // gạch so le. stonewall_cracked: còn dưới nửa máu, có vết nứt.
+  const stoneWall = (g, cracked) => {
+    g.fillStyle(0x6f6b65);
+    g.fillRect(0, 16, 42, 40);
+    g.fillStyle(0xa9a59d);
+    g.fillRect(0, 0, 42, 18);
+    g.fillStyle(0xc4c0b8);
+    g.fillRect(0, 0, 42, 3);
+    g.fillStyle(0x4f4c48);
+    g.fillRect(0, 17, 42, 2);
+    for (let row = 0; row < 3; row++) {
+      const y = 19 + row * 12;
+      g.fillRect(0, y + 11, 42, 2);
+      for (let x = row % 2 ? 7 : 18; x < 42; x += 21) g.fillRect(x, y, 2, 12);
+    }
+    if (cracked) {
+      g.lineStyle(2, 0x2b2926);
+      g.lineBetween(12, 2, 17, 12);
+      g.lineBetween(17, 12, 13, 24);
+      g.lineBetween(13, 24, 20, 38);
+      g.lineBetween(30, 22, 34, 34);
+      g.lineBetween(34, 34, 29, 48);
+    }
+  };
+  gen('stonewall', 42, 56, (g) => stoneWall(g, false));
+  gen('stonewall_cracked', 42, 56, (g) => stoneWall(g, true));
+
   // Hộp Đá Lạnh: hộp đá xám lạnh, nắp đóng băng, viền lông gấu
   gen('icebox', 54, 46, (g) => {
     g.fillStyle(0x7f8a92);

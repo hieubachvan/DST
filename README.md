@@ -40,7 +40,7 @@ Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=
 - `/boss bearger`: gọi boss Bearger tới sau khoảng 12 giây. Bearger mê đồ ăn: thả vài quả mọng (`/give berries 20`) để dụ nó.
 - `/den`: dịch chuyển tới ổ Nhện chúa gần nhất. `/pigs`: dịch chuyển tới làng lợn gần nhất.
 - `/time day`, `/time dusk`, `/time night`: tua tới đầu buổi sáng / chạng vạng / tối (chỉ tua tới).
-- `/spawn <loại> [số con]`: thả quái quanh mình (tối đa 20), ví dụ `/spawn spider 3`, `/spawn pig 2`. Boss thì dùng `/boss`.
+- `/spawn <loại> [số con]`: thả quái quanh mình (tối đa 20), ví dụ `/spawn spider 3`, `/spawn spider_warrior 2`, `/spawn pig 2`. Boss thì dùng `/boss`.
 - `/pigkit`: đủ đồ thử nhà lợn: nguyên liệu Máy Khoa Học và 2 Nhà lợn, búa, giáo, các loại thịt để cho lợn ăn.
 - `/pigreset`: nhà lợn quanh mình có lợn lại ngay, khỏi chờ mấy ngày sau khi lợn chết.
 
@@ -56,6 +56,7 @@ Chế độ thử nghiệm: chạy `npm run dev:test` (bản dev có sẵn `DEV=
 - **Enter**: chat
 - **Ba lô** đeo ở ô Giáp, thêm 8 ô đồ. **Xẻng** đào bụi cỏ / cây non / bụi quả mọng để đem trồng (chuột trái vào cây đã đào). **Lều**: bấm vào lúc chạng vạng hoặc ban đêm để ngủ an toàn. **Giàn phơi**: đứng gần, chuột phải vào thịt sống để phơi. Chuột phải vào Gỗ khi gần lửa để đốt thành Than.
 - **Nhện chúa** ngủ trong các **ổ nhện** ở rừng (hiện trên bản đồ), quanh ổ có nhện con canh. Đánh thì nó thức dậy: cắn, phun độc, tỏa độc và gọi thêm nhện con. **Trúng độc** làm máu tụt dần, giáp không chặn được; Thuốc đắp / Thuốc giải chữa khỏi. Hạ nó được Độc nhện và Nanh nhện để chế **Giáo Nanh Nhện**, **Boomerang Độc** (làm quái trúng độc, boss chịu một nửa) và **Thuốc giải**. Ổ có Nhện chúa mới sau vài ngày. Thử nhanh khi chạy `DEV=1`: gõ `/den` để tới ổ gần nhất.
+- **Tường đá** (Máy Khoa Học, 2 Gạch đá ra 6 đoạn): bấm Tường đá trong túi rồi nhấp lên mặt đất để xây từng đoạn theo ô lưới (bóng đỏ là không xây được), chuột phải / Esc để thôi; trên điện thoại chạm ô Tường đá lần nữa để thôi. Tường chặn người và quái; quái đang đuổi mà bị chặn thì cắn tường, boss phá được. Bấm vào tường khi có Gạch đá để sửa, cầm búa để đập bỏ. **Cửa gỗ** (Máy Khoa Học, 3 Ván gỗ + 1 Gạch đá) đặt giống tường, nhấp vào một đoạn tường đá để gắn cửa vào đó; bấm vào cửa để mở / đóng. Cửa đóng chặn như tường, quái không tự mở được.
 - **Lợn** (rừng) và **bò lông** (vùng đất đá) hiền, chỉ đánh lại khi bị đánh; đánh một con bò là cả đàn lao vào. Giết chúng để lấy Thịt.
 
 **Trên điện thoại / máy tính bảng** (tự nhận ra khi chạm vào màn hình): chạm vào mặt đất để đi, chạm vào vật / quái để tương tác. Muốn có cần điều khiển và nút giữ ✋ thu thập, ⚔️ tấn công thì bấm nút 🕹️. Chạm vào ô đồ để dùng, giữ lâu để mở menu nướng / phơi / vứt. Các nút 🛠️ 💬 ❓ ⛶ ở góc trái trên mở bảng chế tạo, chat, hướng dẫn, toàn màn hình. Thử giao diện điện thoại trên máy tính bằng cách thêm `?touch=1` vào địa chỉ. Điện thoại cùng mạng wifi vào bằng `http://<IP-máy-tính>:5173` (bản dev) hoặc `:3000`.
