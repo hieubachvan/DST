@@ -1,7 +1,7 @@
 import {
   CHUNK, SPAWN, CHARACTERS, chunkOf, chunkKey, PLAYER_SPEED, MAX_HP, MAX_HUNGER, MAX_SANITY, INV_SIZE, CHEST_SIZE, ACT_RANGE,
   TENT_USES, TORCH_RADIUS, FIRES, STATIONS, GEAR_SLOTS, ITEMS, RECIPES, DROP_LIFE, BOOMERANG, POISON, biomeAt, phaseAt, fireRadius, densIn,
-  coastDist, onLand, clampToLand, denAt, hash, DEN_CELL, VILLAGE, villageAt,
+  coastDist, onLand, clampToLand, denAt, hash, DEN_CELL, VILLAGE, villageAt, WALL, BUILDS, wallKey, wallCell, wallPush, pushOutOfWalls,
 } from '../shared/data.js';
 import { sanitizeSettings, clockOf, mapRadius } from '../shared/settings.js';
 
@@ -124,10 +124,22 @@ const COLORS = [0xe05d5d, 0x5d9be0, 0x6fd06f, 0xe0c35d, 0xb86fe0, 0xe08f5d, 0x5d
 // Ngủ trong lều (mỗi giây): hồi tinh thần, hồi máu, đói thêm.
 const SLEEP = { sanity: 1.5, health: 1, hunger: 0.5, minHunger: 25, mobRange: 400 };
 
+// Nhện bỏ cuộc: đuổi một người quá ms mili giây, hoặc bị kéo xa chỗ bắt đầu đuổi quá range, thì bò về chỗ cũ
+// (tốc độ nhân back) và làm ngơ người đó suốt đường về cộng thêm calm mili giây (người khác vẫn bị đuổi).
+// Bị đánh thì đuổi lại từ đầu.
+const SPIDER_GIVEUP = { ms: 12000, range: 900, calm: 8000, back: 0.6 };
+
 const MOBS = {
   spider: {
-    name: 'nhện', hp: 100, speed: 150, wander: 50, damage: 20, cooldown: 1500, sight: 420, daySight: 200, hostile: true,
-    drops: [['monstermeat', 1, 1], ['silk', 1, 0.5]], perPlayer: 3, home: 'forest', safeFromSpawn: 900,
+    name: 'nhện', hp: 100, speed: 150, wander: 50, damage: 10, cooldown: 1500, sight: 420, daySight: 200, hostile: true,
+    drops: [['monstermeat', 1, 1], ['silk', 1, 0.5]], perPlayer: 2, home: 'forest', safeFromSpawn: 900,
+    giveUp: SPIDER_GIVEUP,
+  },
+  // Nhện chiến binh: sống lẫn với nhện thường trong rừng (khoảng 1/3 số nhện), cắn đau hơn, trâu và nhanh hơn.
+  spider_warrior: {
+    name: 'nhện chiến binh', hp: 150, speed: 165, wander: 50, damage: 15, cooldown: 1500, sight: 450, daySight: 220, hostile: true,
+    drops: [['monstermeat', 1, 1], ['silk', 1, 0.5]], perPlayer: 1, home: 'forest', safeFromSpawn: 900,
+    giveUp: { ...SPIDER_GIVEUP, ms: 18000, range: 1200 }, // lì hơn nhện thường
   },
   hound: {
     name: 'chó săn', hp: 150, speed: 190, wander: 60, damage: 20, cooldown: 1800, sight: 900, daySight: 900, leash: 2000,
@@ -143,7 +155,7 @@ const MOBS = {
   // neutral: đi lang thang, chỉ đánh lại người đánh nó. herd: cả đàn xung quanh cùng đánh lại.
   pig: {
     name: 'lợn', hp: 200, speed: 165, wander: 40, damage: 15, cooldown: 2000, leash: 600, neutral: true,
-    hates: ['spider', 'spiderling'], hateSight: 350, // thấy nhện trong hateSight là tự lao vào đánh
+    hates: ['spider', 'spider_warrior', 'spiderling'], hateSight: 350, // thấy nhện trong hateSight là tự lao vào đánh
     drops: [['meat', 1, 1], ['pigskin', 1, 0.4]], perPlayer: 0, // chỉ sống ở làng lợn (xem PIG)
   },
   beefalo: {
@@ -186,8 +198,14 @@ const RESOURCE = {
   carrot: { pick: 'carrot', remove: true, respawn: 90 },
 };
 
-// Công trình người chơi đặt xuống (đập được bằng búa).
-const STRUCTURES = new Set(RECIPES.filter((r) => r.place).map((r) => r.id));
+// Công trình người chơi đặt xuống (đập được bằng búa). Tường đá / cửa gỗ (BUILDS) xây từ món trong túi.
+const STRUCTURES = new Set([...RECIPES.filter((r) => r.place).map((r) => r.id), ...Object.keys(BUILDS)]);
+const structName = (type) => (BUILDS[type] ? ITEMS[BUILDS[type].item].name : RECIPES.find((r) => r.id === type)?.name ?? type);
+// Quái bị tường chặn khi đang đuổi thì cắn tường (sát thương / nhịp cắn của nó); boss và Nhện chúa không có
+// damage thì đập WALL_SMASH máu mỗi giây. Đập bỏ tường bằng búa rơi lại WALL_BACK (như nửa nguyên liệu của công trình).
+const WALL_SMASH = 100;
+const WALL_BACK = { rocks: 2 };
+const MOB_R = 16; // bán kính va chạm tường của quái không có trong BODY_R
 
 const SPAWN_TABLE = {
   meadow: [['grass', 30], ['sapling', 18], ['flower', 18], ['carrot', 10], ['bush', 10], ['tree', 6], ['boulder', 2]],
@@ -285,6 +303,7 @@ export class Game {
     this.dens = new Set(); // ổ Nhện chúa
     this.denCells = new Set(); // ô lưới đã đặt ổ (denAt), để không đặt trùng
     this.pighouses = new Set(); // Nhà lợn
+    this.walls = new Map(); // Tường đá / cửa (BUILDS): wallKey -> ent
     this.villageCells = new Set(); // ô lưới đã đặt làng lợn (villageAt)
     this.mobs = new Map();
     this.respawnQueue = [];
@@ -368,6 +387,7 @@ export class Game {
       this.ensureChunk(...chunkOf(e.x, e.y)).add(e);
       if (FIRES[e.type]) this.fires.add(e);
       if (e.type === 'trap') this.traps.add(e);
+      if (BUILDS[e.type]) this.walls.set(wallKey(e.x, e.y), e);
       if (e.type === 'spiderden') {
         this.dens.add(e);
         this.denCells.add(e.cell);
@@ -492,6 +512,7 @@ export class Game {
     if (type === 'trap') this.traps.add(e);
     if (type === 'spiderden') this.dens.add(e);
     if (type === 'pighouse') this.pighouses.add(e);
+    if (BUILDS[type]) this.walls.set(wallKey(e.x, e.y), e);
     this.ents.set(e.id, e);
     this.ensureChunk(...chunkOf(e.x, e.y)).add(e);
     this.emitChunk(e, 'ent:add', pub(e));
@@ -506,6 +527,7 @@ export class Game {
     this.traps.delete(e);
     this.dens.delete(e);
     this.pighouses.delete(e);
+    if (BUILDS[e.type] && this.walls.get(wallKey(e.x, e.y)) === e) this.walls.delete(wallKey(e.x, e.y));
     this.chunks.get(chunkKey(...chunkOf(e.x, e.y)))?.delete(e);
     this.emitChunk(e, 'ent:del', e.id);
   }
@@ -842,6 +864,13 @@ export class Game {
       p.y = land.y;
       if (Math.hypot(land.x - tx, land.y - ty) > 8) p.socket.emit('teleport', { x: p.x, y: p.y });
     }
+    // Không đi xuyên tường (client cũng tự chặn).
+    const out = pushOutOfWalls(p.x, p.y, WALL.playerR, this.walls);
+    if (out.hit) {
+      p.x = out.x;
+      p.y = out.y;
+      if (Math.hypot(out.x - tx, out.y - ty) > 8) p.socket.emit('teleport', { x: p.x, y: p.y });
+    }
     // Đi ra khỏi lều là thức dậy (bỏ qua gói tin vị trí cũ gửi trước lúc vào lều).
     if (p.sleep && now - p.sleep.at > 600) {
       const tent = this.ents.get(p.sleep.tent);
@@ -936,6 +965,8 @@ export class Game {
       this.emit('fx', { k: 'pick', by: p.id });
     }
     if (e.type === 'tent') return this.sleepIn(p, e);
+    if (e.type === 'stonewall') return this.repairWall(p, e);
+    if (e.type === 'door') return this.toggleDoor(p, e);
     if (e.type === 'dryingrack') {
       if (!e.dry) return this.fail(p, 'Đứng gần giàn, chuột phải vào thịt sống trong túi để phơi.');
       const left = Math.ceil(e.dry.at - this.t);
@@ -945,6 +976,66 @@ export class Game {
       this.updEnt(e);
       this.emit('fx', { k: 'pick', by: p.id });
     }
+  }
+
+  // ---------- Tường đá ----------
+
+  // Xây công trình theo ô lưới (tường / cửa, xem BUILDS) ở ô chứa (x, y), lấy một món d.item trong túi.
+  // Cửa đặt vào ô đang có tường đá thì thay đoạn tường đó (tường trả lại vào túi).
+  onBuild(p, d) {
+    if (p.dead || Date.now() < p.stunUntil) return;
+    const type = ITEMS[d?.item]?.build;
+    const slot = type ? p.inv.findIndex((it) => it?.id === d.item) : -1;
+    if (slot < 0) return;
+    const [x, y] = wallCell(Number(d?.x), Number(d?.y));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || dist(p, { x, y }) > ACT_RANGE + WALL.half) return;
+    this.wake(p);
+    const old = this.walls.get(wallKey(x, y));
+    if (old && !(type === 'door' && old.type === 'stonewall')) return;
+    const h = WALL.half;
+    const blocked = coastDist(this.seed, this.mapR, x, y) < h
+      || [...this.entsNear(x, y, h)].some((e) => e !== old && e.type !== 'drop' && Math.abs(e.x - x) < h && Math.abs(e.y - y) < h && dist(e, { x, y }) < h)
+      || [...this.players.values()].some((q) => !q.dead && wallPush(q.x, q.y, WALL.playerR, { x, y }))
+      || [...this.mobs.values()].some((m) => wallPush(m.x, m.y, BODY_R[m.type] ?? MOB_R, { x, y }));
+    if (blocked) return this.fail(p, 'Chỗ này không xây được.');
+    this.consumeSlot(p, slot);
+    if (old) {
+      this.removeEnt(old);
+      this.give(p, BUILDS.stonewall.item, 1);
+    }
+    const e = this.addEnt(type, x, y, { hp: BUILDS[type].hp, ...(type === 'door' && { open: false }) });
+    this.sendInv(p);
+    this.emit('fx', { k: 'chop', id: e.id, by: p.id });
+  }
+
+  // Mở / đóng cửa. Đóng lúc có người / quái đứng giữa cửa thì họ bị đẩy ra như gặp tường.
+  toggleDoor(p, e) {
+    e.open = !e.open;
+    this.updEnt(e);
+    this.emit('fx', { k: 'door', id: e.id, by: p.id });
+  }
+
+  // Sửa tường: mỗi Gạch đá hồi WALL.repair máu.
+  repairWall(p, e) {
+    if (e.hp >= WALL.hp) return this.fail(p, 'Tường còn nguyên vẹn.');
+    if (this.countItem(p, 'cutstone') < 1) return this.fail(p, 'Mình cần Gạch đá để sửa tường.');
+    this.takeItem(p, 'cutstone', 1);
+    e.hp = Math.min(WALL.hp, e.hp + WALL.repair);
+    this.updEnt(e);
+    this.sendInv(p);
+    this.emit('fx', { k: 'chop', id: e.id, by: p.id });
+  }
+
+  // Quái làm tường mất máu; hết máu thì sập (không rơi gì).
+  hurtWall(e, n) {
+    e.hp -= n;
+    if (e.hp > 0) {
+      this.updEnt(e);
+      this.emit('fx', { k: 'chop', id: e.id });
+      return;
+    }
+    this.removeEnt(e);
+    this.emit('fx', { k: 'die', x: e.x, y: e.y });
   }
 
   // Giàn phơi còn trống gần người chơi (null nếu không có), và có giàn nào ở gần không.
@@ -1015,7 +1106,7 @@ export class Game {
 
   // Phá công trình (búa hoặc boss): rơi lại một nửa nguyên liệu và mọi thứ đang chứa bên trong.
   demolish(e) {
-    const needs = RECIPES.find((r) => r.id === e.type)?.needs;
+    const needs = e.type === 'stonewall' ? WALL_BACK : RECIPES.find((r) => r.id === e.type)?.needs; // cửa: nửa công thức Cửa gỗ
     for (const [id, n] of Object.entries(needs ?? {})) {
       const back = Math.floor(n / 2);
       if (back > 0) this.spawnDrop(e.x + rand(-25, 25), e.y + rand(-10, 15), { id, count: back });
@@ -1048,6 +1139,7 @@ export class Game {
     m.hp -= dmg;
     m.target = p.id;
     m.foe = null; // người chơi đánh thì quay sang đánh người, bỏ con quái đang đánh nhau
+    m.chase = m.calm = m.retreat = null; // nhện (giveUp): bị đánh thì đuổi lại từ đầu
     if (m.leader === p.id) m.leader = null; // đánh lợn đang theo mình: nó bỏ theo và giận
     p.lastHit = { id: m.id, at: Date.now() }; // lợn đang theo p sẽ lao vào đánh giúp
     m.hitAt = Date.now();
@@ -1265,6 +1357,8 @@ export class Game {
       return this.sendInv(p);
     }
 
+    if (def.build) return this.fail(p, 'Nhấp lên mặt đất để chọn chỗ xây.');
+
     if (def.plant) {
       const spot = this.placeSpot(p);
       if (!spot) return this.fail(p, 'Không đủ chỗ trống để trồng ở đây.');
@@ -1378,9 +1472,21 @@ export class Game {
       this.addEnt(recipe.id, spot.x, spot.y, extra);
       this.sendInv(p);
     } else {
-      this.give(p, recipe.id, 1);
+      this.give(p, recipe.id, recipe.count ?? 1);
+      this.autoEquip(p, recipe.id);
     }
-    this.emit('fx', { k: 'pick', by: p.id });
+    this.emit('fx', { k: 'craft', by: p.id });
+  }
+
+  // Vừa chế xong công cụ / vũ khí (đồ cầm tay) thì cầm lên luôn, đồ đang cầm cất vào túi.
+  // Trừ khi đang cầm đuốc lúc trời tối: tắt đuốc là bị bóng tối tấn công, nên để đồ mới trong túi.
+  autoEquip(p, id) {
+    const def = ITEMS[id];
+    if (def.slot !== 'hand') return;
+    const held = ITEMS[p.gear.hand?.id];
+    if (held?.burns && phaseAt(this.t, this.clock) !== 'day') return this.say(p, `Trời tối, mình vẫn cầm đuốc. ${def.name} để trong túi.`);
+    const slot = p.inv.findIndex((it) => it?.id === id && (!def.uses || it.dur === def.uses));
+    if (slot >= 0) this.onUse(p, { slot }); // túi đầy thì đồ mới đã rơi xuống đất, thôi không cầm
   }
 
   // ---------- Rương ----------
@@ -1691,9 +1797,18 @@ export class Game {
     }
 
     // Quái không xuống biển: đuổi / đi lang thang tới bờ thì bị chặn lại ở mép nước.
+    // Tường chặn quái; đang đuổi (người hoặc quái khác) mà bị chặn thì cắn tường.
     for (const m of this.mobs.values()) {
       const land = clampToLand(this.seed, this.mapR, m.x, m.y, 10);
       if (land) { m.x = land.x; m.y = land.y; }
+      const out = pushOutOfWalls(m.x, m.y, BODY_R[m.type] ?? MOB_R, this.walls);
+      if (!out.hit) continue;
+      m.x = out.x;
+      m.y = out.y;
+      if (!(m.target || m.foe || m.targetMob || m.act) || now < (m.wallAt ?? 0)) continue;
+      const def = MOBS[m.type];
+      m.wallAt = now + (def.damage ? def.cooldown : 1000);
+      this.hurtWall(out.hit, def.damage ?? WALL_SMASH);
     }
 
     // Thỏ đi ngang bẫy sẽ bị bắt.
@@ -1861,7 +1976,7 @@ export class Game {
       }
       for (const e of smashed) this.demolish(e);
       if (smashed.length) {
-        const names = smashed.map((e) => RECIPES.find((r) => r.id === e.type)?.name ?? e.type);
+        const names = smashed.map((e) => structName(e.type));
         this.system(`💥 Deerclops đã phá hủy ${[...new Set(names)].join(', ')}!`);
       }
       m.slam = null;
@@ -1978,7 +2093,7 @@ export class Game {
         if (Math.random() < B.smashChance) smashed.push(e);
       }
       for (const e of smashed) {
-        this.system(`💥 ${def.name} húc đổ ${RECIPES.find((r) => r.id === e.type)?.name ?? e.type}!`);
+        this.system(`💥 ${def.name} húc đổ ${structName(e.type)}!`);
         this.demolish(e);
       }
       if (a.left <= 0) {
@@ -2109,14 +2224,41 @@ export class Game {
       tgt = null;
       let bd = phase === 'day' ? def.daySight : def.sight;
       for (const p of this.players.values()) {
-        if (p.dead) continue;
+        if (p.dead || (m.calm?.id === p.id && now < m.calm.until)) continue;
         const d = dist(p, m);
         if (d < bd) { bd = d; tgt = p; }
       }
       m.target = tgt?.id ?? null;
     }
+    if (tgt && def.giveUp) {
+      const g = def.giveUp;
+      if (m.chase?.id !== tgt.id) m.chase = { id: tgt.id, t: now, x: m.x, y: m.y };
+      if (now - m.chase.t > g.ms || dist(m, m.chase) > g.range) {
+        // hết giờ về (vd. bị bờ biển chặn) thì thôi, đi lang thang tại chỗ
+        const until = now + (dist(m, m.chase) / (def.speed * g.back)) * 1000 + 1000;
+        m.retreat = { x: m.chase.x, y: m.chase.y, until };
+        m.calm = { id: tgt.id, until: until + g.calm };
+        m.chase = m.target = tgt = null;
+      }
+    }
     if (!tgt) {
       m.lunge = 0; // mất mục tiêu thì bỏ cú cắn đang gồng
+      m.chase = null;
+      const r = m.retreat;
+      if (r && (now > r.until || dist(m, r) < 40)) {
+        m.retreat = null;
+        if (m.calm) m.calm.until = Math.min(m.calm.until, now + def.giveUp.calm); // về sớm thì làm ngơ calm tính từ lúc về
+      }
+      if (m.retreat) {
+        // vừa bỏ cuộc: bò thẳng về chỗ bắt đầu đuổi, tới nơi thì đi lang thang như cũ
+        const d = dist(m, r), v = def.speed * def.giveUp.back;
+        m.vx = ((r.x - m.x) / d) * v;
+        m.vy = ((r.y - m.y) / d) * v;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.wt = 0;
+        return;
+      }
       return this.wander(m, def, dt, now);
     }
     this.chase(m, def, tgt, dt, now);
@@ -2681,15 +2823,15 @@ export class Game {
       }
     }
 
-    // Ban đêm nhện kéo tới gần người chơi.
+    // Ban đêm nhện kéo tới gần người chơi (1/3 là nhện chiến binh).
     if (phase === 'night' && this.cfg.nightSpiders) {
       for (const p of this.players.values()) {
         if (p.dead || Math.random() > 0.12 || this.mobs.size >= 60) continue;
         let near = 0;
-        for (const m of this.mobs.values()) if (m.type === 'spider' && dist(m, p) < 900) near++;
+        for (const m of this.mobs.values()) if ((m.type === 'spider' || m.type === 'spider_warrior') && dist(m, p) < 900) near++;
         if (near >= 3) continue;
         const a = rand(0, Math.PI * 2), x = p.x + Math.cos(a) * 600, y = p.y + Math.sin(a) * 600;
-        if (onLand(this.seed, this.mapR, x, y)) this.spawnMob('spider', x, y, { nightOnly: true });
+        if (onLand(this.seed, this.mapR, x, y)) this.spawnMob(Math.random() < 1 / 3 ? 'spider_warrior' : 'spider', x, y, { nightOnly: true });
       }
     }
   }

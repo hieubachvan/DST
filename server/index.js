@@ -109,6 +109,7 @@ io.on('connection', (socket) => {
   onPlayer('chest:take', (p, d) => game.onTake(p, d));
   onPlayer('chest:close', (p) => game.onChestClose(p));
   onPlayer('craft', (p, d) => game.onCraft(p, d));
+  onPlayer('build', (p, d) => game.onBuild(p, d));
   onPlayer('chat', (p, d) => game.onChat(p, d));
   socket.on('disconnect', () => {
     if (player) game.leave(player);

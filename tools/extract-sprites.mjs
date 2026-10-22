@@ -225,6 +225,12 @@ const COPIES = {
   icebox: 'icebox.png', // Hộp Đá Lạnh (icon và hình đặt ngoài thế giới)
   pighouse: 'pighouse.png', // Nhà lợn ở làng lợn
   pigskin: 'pigskin.png', // icon Da lợn (rơi ra khi giết lợn / đập nhà lợn)
+  spider_warrior: 'spider_warrior.png', // Nhện chiến binh
+  wall_stone: 'wall_stone.png', // Tường đá: icon trong túi và hình tường đã xây ngoài thế giới
+  // Cửa gỗ (node tools/make-door.mjs từ door.png): icon, và hình ngoài thế giới lúc đóng / mở
+  door: 'door.png', door_closed: 'door_closed.png', door_open: 'door_open.png',
+  // Hiệu ứng chế tạo xong (che_tao/, 7 khung 400x400 cùng tỉ lệ, phát trên đầu người vừa chế)
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((i) => [`craft_${i}`, `craft/craft_${i}.png`])),
 };
 
 const PAD = 3;

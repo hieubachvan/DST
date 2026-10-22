@@ -60,6 +60,7 @@ function itemInfo(it) {
 function primaryAction(def, chestOpen) {
   return chestOpen ? 'Cất vào rương'
     : def.slot ? `Trang bị (ô ${GEAR_NAMES[def.slot]})` : def.food ? 'Ăn' : def.plant ? 'Trồng xuống đất cạnh bạn'
+    : def.build ? 'Chọn chỗ xây (nhấp lên mặt đất)'
     : def.fuel ? 'Thêm vào lửa (khi đứng gần)' : null;
 }
 
@@ -136,7 +137,7 @@ export class Hud {
       }
       el.addEventListener('click', () => {
         if (longPressed || dragged) return;
-        socket.emit(this.chestId ? 'chest:store' : 'use', { slot: i });
+        this.useSlot(i);
       });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -507,6 +508,17 @@ export class Hud {
     this.scene?.dragOver(null);
   }
 
+  // Chuột trái / nút chính của một ô đồ. Tường đá / Cửa gỗ: bật / tắt chế độ chọn chỗ xây (GameScene.startPlacing).
+  useSlot(i) {
+    const id = this.inv[i]?.id;
+    if (!this.chestId && ITEMS[id]?.build) {
+      if (this.scene?.placing === id) this.scene.stopPlacing();
+      else this.scene?.startPlacing(id);
+      return;
+    }
+    this.socket.emit(this.chestId ? 'chest:store' : 'use', { slot: i });
+  }
+
   // ---------- Menu giữ lâu vào ô đồ (cảm ứng) ----------
 
   openSheet(i) {
@@ -519,7 +531,7 @@ export class Hud {
     const alt = (mode) => () => this.socket.emit('alt', { slot: i, mode });
     const btns = [];
     const primary = primaryAction(def, !!this.chestId);
-    if (primary) btns.push([primary.replace(/ \(.*\)$/, ''), () => this.socket.emit(this.chestId ? 'chest:store' : 'use', { slot: i })]);
+    if (primary) btns.push([primary.replace(/ \(.*\)$/, ''), () => this.useSlot(i)]);
     if (def.cook) btns.push([def.food ? '🔥 Nướng' : `🔥 Đốt thành ${ITEMS[def.cook].name}`, alt('cook')]);
     if (def.dry) btns.push(['🪝 Phơi', alt('dry')]);
     btns.push(['🗑️ Vứt xuống đất', alt('drop'), 'danger']);
@@ -651,7 +663,7 @@ export class Hud {
       const el = document.createElement('div');
       el.className = 'recipe' + (this.canCraft(r) ? '' : ' off');
       el.title = r.desc + (r.station ? `\n🔒 Phải đứng gần ${STATIONS[r.station].name}` : '');
-      el.innerHTML = `<span class="ic">${recipeIcon(r)}</span><div><b>${recipeName(r)}</b>${
+      el.innerHTML = `<span class="ic">${recipeIcon(r)}</span><div><b>${recipeName(r)}${r.count > 1 ? ` ×${r.count}` : ''}</b>${
         locked ? `<small class="lock">🔒 Cần ${STATIONS[r.station].name}</small>` : ''
       }<small>${needs.join('')}</small></div>`;
       el.addEventListener('click', () => this.socket.emit('craft', { id: r.id }));

@@ -18,6 +18,7 @@ export const DUSK_END = 180;
 export const CHARACTERS = {
   default: { name: 'Mặc định', img: 'sprites/player_idle_down.png' },
   hero: { name: 'Gã tóc cam', img: 'hero/head_front.png' },
+  girl: { name: 'Cô bé', img: 'girl/head.png' },
 };
 
 export const PLAYER_SPEED = 200;
@@ -34,6 +35,48 @@ export const ACT_RANGE = 80;
 export const TENT_USES = 6;
 
 export const TORCH_RADIUS = 220;
+
+// Tường đá: mỗi đoạn chiếm một ô lưới cạnh grid (tâm ở giữa ô), chặn người và quái như một hình vuông cạnh 2 * half.
+// hp: máu mỗi đoạn; repair: máu hồi khi sửa bằng một Gạch đá. Người chơi coi như hình tròn bán kính playerR.
+export const WALL = { grid: 40, half: 20, hp: 400, repair: 100, playerR: 14 };
+// Công trình xây theo ô lưới từ món trong túi (ITEMS[item].build = loại công trình): tường đá và cửa gỗ.
+// Cửa đóng chặn đường như tường, mở thì đi qua được (e.open); cửa đặt đè lên tường đá được (gắn cửa vào tường).
+export const BUILDS = { stonewall: { item: 'wall_stone', hp: WALL.hp }, door: { item: 'door', hp: 300 } };
+export const wallKey = (x, y) => `${Math.floor(x / WALL.grid)},${Math.floor(y / WALL.grid)}`;
+// Tâm ô lưới chứa điểm (x, y).
+export const wallCell = (x, y) => [(Math.floor(x / WALL.grid) + 0.5) * WALL.grid, (Math.floor(y / WALL.grid) + 0.5) * WALL.grid];
+
+// Hình tròn (x, y, r) có chạm đoạn tường w không: trả về [dx, dy] cần đẩy ra, hoặc null.
+export function wallPush(x, y, r, w) {
+  const dx = x - w.x, dy = y - w.y, h = WALL.half;
+  const ox = dx - Math.max(-h, Math.min(h, dx)), oy = dy - Math.max(-h, Math.min(h, dy));
+  const d = Math.hypot(ox, oy);
+  if (d >= r) return null;
+  if (d > 0) return [(ox / d) * (r - d), (oy / d) * (r - d)];
+  // tâm nằm trong ô: đẩy ra theo cạnh gần nhất
+  const px = h + r - Math.abs(dx), py = h + r - Math.abs(dy);
+  return px < py ? [Math.sign(dx || 1) * px, 0] : [0, Math.sign(dy || 1) * py];
+}
+
+// Đẩy hình tròn ra khỏi mọi đoạn tường quanh nó. walls: Map wallKey -> đoạn tường / cửa { x, y, open? } (cửa mở thì bỏ qua).
+// Trả về { x, y, hit } — hit là đoạn tường đã chặn (null nếu không chạm).
+export function pushOutOfWalls(x, y, r, walls) {
+  let hit = null;
+  if (!walls.size) return { x, y, hit };
+  const g = WALL.grid, n = Math.ceil(r / g) + 1;
+  const cx = Math.floor(x / g), cy = Math.floor(y / g);
+  for (let j = -n; j <= n; j++) {
+    for (let i = -n; i <= n; i++) {
+      const w = walls.get(`${cx + i},${cy + j}`);
+      const push = w && !w.open && wallPush(x, y, r, w);
+      if (!push) continue;
+      x += push[0];
+      y += push[1];
+      hit = w;
+    }
+  }
+  return { x, y, hit };
+}
 
 // Boomerang: ném vào quái ở xa, bay tới rồi tự quay về tay. Trúng quái thường thì làm choáng một chút.
 export const BOOMERANG = { range: 380, speed: 650, hitR: 36, catchR: 40, stunMs: 700 };
@@ -79,6 +122,8 @@ export const ITEMS = {
   rope: { name: 'Dây thừng', icon: '🪢', stack: 40 },
   boards: { name: 'Ván gỗ', icon: '🟫', stack: 40, fuel: 60 },
   cutstone: { name: 'Gạch đá', icon: '🧱', stack: 40 },
+  wall_stone: { name: 'Tường đá', icon: '🚧', stack: 20, build: 'stonewall' },
+  door: { name: 'Cửa gỗ', icon: '🚪', stack: 10, build: 'door' },
 
   // Thức ăn
   petals: { name: 'Cánh hoa', icon: '🌸', stack: 40, from: 'Hái hoa ở đồng cỏ (+5 tinh thần)', food: { hunger: 0, health: 1, sanity: 0 } },
@@ -142,7 +187,7 @@ export const CATEGORIES = [
 ];
 
 // place: true nghĩa là chế tạo xong sẽ đặt ngay công trình "id" xuống đất.
-// station: phải đứng gần công trình đó mới chế tạo được.
+// station: phải đứng gần công trình đó mới chế tạo được. count: số món làm ra mỗi lần (mặc định 1).
 export const RECIPES = [
   { id: 'axe', cat: 'tool', needs: { twigs: 1, flint: 1 }, desc: 'Dùng để chặt cây.' },
   { id: 'pickaxe', cat: 'tool', needs: { twigs: 2, flint: 2 }, desc: 'Dùng để đập đá, có thể ra vàng.' },
@@ -167,10 +212,12 @@ export const RECIPES = [
 
   { id: 'rope', cat: 'refine', station: 'science', needs: { cutgrass: 3 }, desc: 'Nguyên liệu cho giáp, mũ, lều, boomerang.' },
   { id: 'boards', cat: 'refine', station: 'science', needs: { log: 4 }, desc: 'Nguyên liệu cho rương, nồi nấu, nhà lợn. Cũng là củi tốt.' },
-  { id: 'cutstone', cat: 'refine', station: 'science', needs: { rocks: 3 }, desc: 'Nguyên liệu cho nồi nấu, nhà lợn.' },
+  { id: 'cutstone', cat: 'refine', station: 'science', needs: { rocks: 3 }, desc: 'Nguyên liệu cho nồi nấu, nhà lợn, tường đá. Dùng để sửa tường đá.' },
 
   { id: 'science', cat: 'science', name: 'Máy Khoa Học', icon: '⚗️', place: true, needs: { gold: 1, log: 4, rocks: 4 }, desc: 'Đứng gần máy để chế tạo đồ cao cấp (các món có 🔒).' },
   { id: 'pighouse', cat: 'science', name: 'Nhà lợn', icon: '🛖', place: true, station: 'science', needs: { boards: 4, cutstone: 3, pigskin: 4 }, desc: 'Có một con lợn ở: ban ngày ra đi quanh nhà, ghét nhện, cho thịt thì đi theo đánh giúp. Lợn chết thì vài ngày sau nhà có con mới, giết lợn có thể rơi Da lợn để xây thêm nhà.' },
+  { id: 'wall_stone', cat: 'science', station: 'science', needs: { cutstone: 2 }, count: 6, desc: `Làm ra 6 đoạn tường. Bấm vào Tường đá trong túi rồi nhấp lên mặt đất để xây từng đoạn theo ô lưới; chuột phải hoặc Esc để thôi. Tường chặn người và quái (${WALL.hp} máu mỗi đoạn), quái đuổi tới sẽ cắn tường. Bấm vào tường khi có Gạch đá để sửa (+${WALL.repair} máu), cầm búa để đập bỏ.` },
+  { id: 'door', cat: 'science', station: 'science', needs: { boards: 3, cutstone: 1 }, desc: `Bấm vào Cửa gỗ trong túi rồi nhấp lên mặt đất để đặt, hoặc nhấp vào một đoạn tường đá để gắn cửa vào đó (đoạn tường trả lại vào túi). Bấm vào cửa để mở / đóng. Cửa đóng chặn người và quái như tường (${BUILDS.door.hp} máu), quái không tự mở được.` },
   { id: 'crockpot', cat: 'science', name: 'Nồi nấu', icon: '🫕', place: true, station: 'science', needs: { cutstone: 3, boards: 2, twigs: 6 }, desc: 'Đứng gần nồi để nấu các món hầm bổ dưỡng.' },
 
   { id: 'spear', cat: 'gear', needs: { twigs: 2, cutgrass: 2, flint: 1 }, desc: 'Vũ khí cơ bản.' },

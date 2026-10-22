@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {
   ITEMS, RECIPES, FIRES, STATIONS, CHUNK, chunkOf, chunkKey, hash, PLAYER_SPEED, TORCH_RADIUS, BIOMES, BOOMERANG, biomeAt, villageCheck, fireRadius, darknessAt,
-  SHORE_COLORS, SHORE_W, coastDist, clampToLand,
+  SHORE_COLORS, SHORE_W, coastDist, clampToLand, ACT_RANGE, WALL, BUILDS, wallKey, wallCell, wallPush, pushOutOfWalls,
 } from '../../shared/data.js';
 import { mapRadius, sanitizeSettings } from '../../shared/settings.js';
 import { makeTextures } from './textures.js';
@@ -12,6 +12,7 @@ import { BEARGER_RIGS } from './rig/bearger.js';
 import { HERO_RIGS, HERO_HEIGHT, HERO_GEAR, equipHero } from './rig/hero.js';
 import { HERO_PARTS } from './rig/hero-parts.js';
 import { PIG_RIGS, PIG_HEIGHT, PIG_IMAGES } from './rig/pig.js';
+import { GIRL_RIGS, GIRL_HEIGHT, GIRL_IMAGES } from './rig/girl.js';
 import { equipWeapon, WEAPONS } from './rig/biped.js';
 
 // Chiều cao hiển thị (pixel thế giới) của từng sprite thật. Hình vẽ bằng code giữ nguyên cỡ.
@@ -19,7 +20,7 @@ const ART_HEIGHT = {
   tree: 125, tree2: 125, sapling: 46, grass: 36, bush: 40, bush_berries: 44, boulder: 48, flint: 18,
   carrot: 26, flower0: 24, flower1: 24, flower2: 24, flower3: 24, flower4: 24,
   campfire: 58, firepit: 46, chest: 42, icebox: 52, science: 84, crockpot: 58, trap: 26, tent: 92, dryingrack: 78, pighouse: 150,
-  rabbit: 34, spider: 46, spiderling: 32, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
+  rabbit: 34, spider: 46, spider_warrior: 54, spiderling: 32, hound: 56, pig: 54, beefalo: 88, deerclops: 200, bearger: 133, player: 68, item: 26,
 };
 const BOSS_WALK = [0, 1, 2, 1];
 // Nhện chúa: mọi khung trên tấm hình cao ~74px, phóng chung một tỉ lệ để cao ~95px (gấp đôi nhện thường).
@@ -50,6 +51,10 @@ const ROAR_RATE = { deerclops: 1, bearger: 0.75 }; // Bearger dùng chung tiến
 const EXPLOSION = [1, 2, 3, 4, 5, 6, 7].map((i) => `explosion_${i}`);
 const EXPLOSION_MAX_W = 354;
 const EXPLOSION_FRAME_MS = 60;
+// Hiệu ứng chế tạo xong (che_tao/): các khung cùng cỡ CRAFT_SRC, hiện rộng CRAFT_W trên đầu người vừa chế.
+const WALL_HURT_TINT = 0x958a80; // tường (sprite) còn dưới nửa máu
+const CRAFT_FX = [1, 2, 3, 4, 5, 6, 7].map((i) => `craft_${i}`);
+const CRAFT_SRC = 400, CRAFT_W = 100, CRAFT_FRAME_MS = 70;
 const SOUND_RANGE = 1400; // xa hơn chừng này (pixel thế giới) thì không nghe thấy tiếng boss
 const ROAR_GAP_MS = 5000; // tiếng gầm dài ~4 giây, không cho chồng lên nhau
 // Tiếng khi nhặt / hái: loại vật -> âm thanh ("drop" = đồ rơi dưới đất)
@@ -74,6 +79,13 @@ const STEP_MS = 120;
 const HERO_H = 80;
 const HERO_SCALE = HERO_H / HERO_HEIGHT;
 const HERO_ATTACK_MS = 450; // giữ dáng đánh / chặt sau mỗi lần thao tác
+// Nhân vật chọn được mà vẽ bằng rig ghép mảnh: h là chiều cao hiển thị. Cô bé dùng khung xương chung (biped.js),
+// không cầm vũ khí trên rig (đồ cầm tay vẽ bằng biểu tượng như nhân vật mặc định).
+const GIRL_H = 80;
+const RIG_CHARS = {
+  hero: { rigs: HERO_RIGS, h: HERO_H, scale: HERO_SCALE },
+  girl: { rigs: GIRL_RIGS, h: GIRL_H, scale: GIRL_H / GIRL_HEIGHT },
+};
 const PLAYER_FRAME_H = 110; // chiều cao gốc của khung 8 hướng, dùng chung để nhân vật không co giãn giữa các khung
 
 function dirFromVector(dx, dy) {
@@ -93,16 +105,17 @@ const GROUND_DEPTH = -1e9;
 const DARK_DEPTH = 1e9;
 const UI_DEPTH = 2e9;
 const REPEAT_TYPES = new Set(['tree', 'boulder']);
-const STRUCTURES = new Set(RECIPES.filter((r) => r.place).map((r) => r.id));
+const STRUCTURES = new Set([...RECIPES.filter((r) => r.place).map((r) => r.id), ...Object.keys(BUILDS)]);
 const MOB_NAMES = {
-  spider: 'Nhện', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops', bearger: 'Bearger',
+  spider: 'Nhện', spider_warrior: 'Nhện chiến binh', rabbit: 'Thỏ', hound: 'Chó săn', pig: 'Lợn', beefalo: 'Bò lông', deerclops: 'Deerclops', bearger: 'Bearger',
   spiderling: 'Nhện con', spiderqueen: 'Nhện chúa',
 };
-const MOB_SHADOW = { rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3.2, spiderling: 0.9, spiderqueen: 2.6 };
+const MOB_SHADOW = { spider_warrior: 1.5, rabbit: 0.7, pig: 1.4, beefalo: 2, deerclops: 4, bearger: 3.2, spiderling: 0.9, spiderqueen: 2.6 };
 const DIGGABLE = new Set(['sapling', 'grass', 'bush']);
 const NAMES = {
   tree: 'Cây thông', boulder: 'Tảng đá', sapling: 'Cây non', grass: 'Bụi cỏ', bush: 'Bụi quả mọng',
   flower: 'Hoa', flint: 'Đá lửa', carrot: 'Cà rốt', spiderden: 'Ổ Nhện chúa', pighouse: 'Nhà lợn',
+  ...Object.fromEntries(Object.entries(BUILDS).map(([type, b]) => [type, ITEMS[b.item].name])),
   ...Object.fromEntries(RECIPES.filter((r) => r.place).map((r) => [r.id, r.name])),
 };
 const PICK_LABELS = {
@@ -122,7 +135,7 @@ export class GameScene extends Phaser.Scene {
     this.load.spritesheet('smoke', `${SPRITE_URL}smoke.png`, { frameWidth: SMOKE.size, frameHeight: SMOKE.size });
     for (const name of Object.keys(HERO_PARTS)) this.load.image(`hero_${name}`, `${import.meta.env.BASE_URL}hero/${name}.png`);
     // Lợn ghép mảnh: mảnh lợn + ảnh vũ khí (rig có sẵn xương vũ khí, lợn không cầm nên ẩn đi)
-    for (const [key, file] of [...PIG_IMAGES, ...WEAPONS.map((w) => [`stick_${w}`, `stick/${w}.png`])]) {
+    for (const [key, file] of [...PIG_IMAGES, ...GIRL_IMAGES, ...WEAPONS.map((w) => [`stick_${w}`, `stick/${w}.png`])]) {
       this.load.image(key, `${import.meta.env.BASE_URL}${file}`);
     }
     for (const [name, parts] of rigParts) {
@@ -153,6 +166,8 @@ export class GameScene extends Phaser.Scene {
     this.worldT = init.t;
     this.ents = new Map();
     this.fires = new Set();
+    this.walls = new Map(); // Tường đá / cửa (BUILDS): wallKey -> ent, để chặn đường đi
+    this.placing = null; // đang chọn chỗ xây: mã món trong túi (Tường đá / Cửa gỗ)
     this.players = new Map();
     this.mobs = new Map();
     this.booms = new Map();
@@ -194,6 +209,7 @@ export class GameScene extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,F', false);
     this.input.mouse.disableContextMenu();
     this.input.on('pointerdown', (p) => this.onPointerDown(p));
+    this.input.keyboard.on('keydown-ESC', () => this.stopPlacing());
     this.pointerIn = false;
     this.input.on('pointermove', () => { this.pointerIn = true; });
     this.input.on('gameout', () => {
@@ -402,6 +418,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // Hình tường / cửa. Tường dùng sprite Tường đá (cùng hình icon), chưa có sprite thì dùng khối đá vẽ bằng code
+  // (có bản nứt khi còn dưới nửa máu). Cửa: hình đóng / mở (chưa có sprite thì vẽ như tường).
+  buildTexture(e) {
+    if (e.type === 'door') {
+      const key = e.open ? 'door_open' : 'door_closed';
+      return this.textures.exists(key) ? key : 'stonewall';
+    }
+    if (this.isArt('wall_stone')) return 'wall_stone';
+    return e.hp < WALL.hp / 2 ? 'stonewall_cracked' : 'stonewall';
+  }
+
   entTexture(e) {
     switch (e.type) {
       case 'sapling': return e.ready ? 'sapling' : 'sapling_picked';
@@ -466,10 +493,13 @@ export class GameScene extends Phaser.Scene {
       spr.img = img;
       spr.win = win;
       spr.winY = e.y + (w.y - PIGHOUSE_SRC_H * 0.95) * k;
+    } else if (BUILDS[e.type]) {
+      // đáy hình ở mép dưới ô lưới, để người đứng ngay dưới tường được vẽ đè lên tường
+      spr = this.add.image(e.x, e.y + WALL.half, this.buildTexture(e)).setOrigin(0.5, 1);
     } else {
       spr = this.add.image(e.x, e.y, this.entTexture(e)).setOrigin(0.5, 0.95);
     }
-    spr.setDepth(e.y);
+    spr.setDepth(BUILDS[e.type] ? e.y + WALL.half : e.y);
     const o = { e, spr, pending: 0 };
     this.ents.set(e.id, o);
     if (FIRES[e.type]) this.fires.add(o);
@@ -492,6 +522,13 @@ export class GameScene extends Phaser.Scene {
       spr.glow.setVisible(e.fuel > 0);
     } else if (e.type === 'pighouse') {
       spr.win.setVisible(!!e.inside);
+    } else if (BUILDS[e.type]) {
+      spr.setTexture(this.buildTexture(e));
+      spr.setScale((WALL.grid + 2) / spr.frame.width); // ảnh vẽ to hơn ô lưới, thu về rộng bằng một ô tường
+      // sprite tường không có bản nứt: còn dưới nửa máu thì tối đi
+      if (spr.texture.key === 'wall_stone' && e.hp < WALL.hp / 2) spr.setTint(WALL_HURT_TINT);
+      else spr.clearTint();
+      this.walls.set(wallKey(e.x, e.y), e); // ent:upd gửi object mới
     } else {
       const key = this.entTexture(e);
       const mul = e.type === 'tree' ? 0.85 + ((e.id * 37) % 30) / 100 : 1;
@@ -515,6 +552,7 @@ export class GameScene extends Phaser.Scene {
     o.spr.destroy();
     this.ents.delete(id);
     this.fires.delete(o);
+    if (BUILDS[o.e.type] && this.walls.get(wallKey(o.e.x, o.e.y)) === o.e) this.walls.delete(wallKey(o.e.x, o.e.y));
   }
 
   // ---------- Nhân vật & quái ----------
@@ -562,15 +600,18 @@ export class GameScene extends Phaser.Scene {
 
   applyRoster(pl) {
     const info = this.roster.get(pl.id) || { name: '...', color: 0xffffff };
-    const hero = info.char === 'hero';
-    if (hero && !pl.rig) {
-      pl.rig = new DirectionalRig(this, HERO_RIGS, 0, 0, HERO_SCALE);
+    const char = Object.hasOwn(RIG_CHARS, info.char) ? info.char : null;
+    if (pl.rig && pl.rigChar !== char) {
+      pl.rigBox.destroy();
+      pl.rig = pl.rigBox = pl.rigChar = null;
+    }
+    if (char && !pl.rig) {
+      pl.rig = new DirectionalRig(this, RIG_CHARS[char].rigs, 0, 0, RIG_CHARS[char].scale);
+      if (char !== 'hero') equipWeapon(pl.rig, null);
       pl.rigBox = this.add.container(0, 2, pl.rig.roots);
       pl.c.addAt(pl.rigBox, 2); // trên vòng màu và bóng, dưới đồ cầm tay
+      pl.rigChar = char;
       pl.gearKey = null;
-    } else if (!hero && pl.rig) {
-      pl.rigBox.destroy();
-      pl.rig = pl.rigBox = null;
     }
     pl.rig?.clearTint();
     if (pl.sprite) pl.sprite.clearTint();
@@ -673,12 +714,25 @@ export class GameScene extends Phaser.Scene {
         if (pl && PICK_SOUNDS[fx.what]) this.playAt(PICK_SOUNDS[fx.what], pl.x, pl.y, 0.93 + Math.random() * 0.14);
         break;
       }
+      case 'door': {
+        const o = this.ents.get(fx.id);
+        if (o) this.playAt('twig', o.e.x, o.e.y, 0.8);
+        break;
+      }
+      case 'craft': {
+        const pl = this.players.get(fx.by);
+        if (!pl) break;
+        this.playAt('pickup', pl.x, pl.y);
+        if (this.textures.exists(CRAFT_FX[0])) this.craftPuff(pl);
+        break;
+      }
       case 'chop': {
         const o = this.ents.get(fx.id);
         if (!o) break;
         // Lệch cao độ một chút để các nhát liên tiếp nghe không giống hệt nhau.
         if (o.e.type === 'tree') this.playAt('chop', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
-        else if (o.e.type === 'boulder') this.playAt('mine', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
+        else if (o.e.type === 'door') this.playAt('chop', o.e.x, o.e.y, 1.1 + Math.random() * 0.1);
+        else if (o.e.type === 'boulder' || o.e.type === 'stonewall') this.playAt('mine', o.e.x, o.e.y, 0.92 + Math.random() * 0.16);
         else if (o.e.type === 'pighouse') this.playAt('chop', o.e.x, o.e.y, 0.7 + Math.random() * 0.1); // búa đập nhà: trầm hơn
         this.tweens.add({ targets: o.spr, x: o.e.x + 4, duration: 50, yoyo: true, repeat: 1, onComplete: () => { o.spr.x = o.e.x; } });
         break;
@@ -983,6 +1037,23 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  // Phát hiệu ứng chế tạo xong trên đầu người chơi pl, đi theo người suốt lúc phát.
+  craftPuff(pl) {
+    const h = pl.rig ? RIG_CHARS[pl.rigChar].h : ART_HEIGHT.player;
+    const place = () => img.setPosition(pl.x, pl.y - h * 0.6).setDepth(pl.y + 1);
+    const img = this.add.image(0, 0, CRAFT_FX[0]).setScale(CRAFT_W / CRAFT_SRC);
+    place();
+    let i = 0;
+    this.time.addEvent({
+      delay: CRAFT_FRAME_MS,
+      repeat: CRAFT_FX.length - 1,
+      callback: () => {
+        if (++i < CRAFT_FX.length) place().setTexture(CRAFT_FX[i]);
+        else img.destroy();
+      },
+    });
+  }
+
   // ---------- Điều khiển ----------
 
   hasTool(tool) {
@@ -1035,6 +1106,9 @@ export class GameScene extends Phaser.Scene {
       case 'science': return 'Máy Khoa Học — đứng gần để chế tạo đồ 🔒';
       case 'crockpot': return 'Nồi nấu — đứng gần để nấu món hầm';
       case 'chest': return 'Mở rương';
+      case 'door': return `${e.open ? 'Đóng' : 'Mở'} cửa — ${Math.ceil(e.hp)}/${BUILDS.door.hp} máu`;
+      case 'stonewall':
+        return `Tường đá — ${Math.ceil(e.hp)}/${WALL.hp} máu${e.hp < WALL.hp ? ' (bấm để sửa bằng Gạch đá, +' + WALL.repair + ')' : ''}`;
       case 'icebox': return 'Mở Hộp Đá Lạnh (đồ ăn hư chậm gấp đôi)';
       case 'trap': return e.caught ? 'Lấy thỏ trong bẫy' : 'Bẫy thỏ (đang chờ)';
       case 'tent': return `Ngủ trong lều (còn ${e.uses ?? 0} lần) — chạng vạng / ban đêm`;
@@ -1083,6 +1157,7 @@ export class GameScene extends Phaser.Scene {
   setHover(h) {
     const prev = this.hover?.kind === 'ent' ? this.hover.o.spr : this.hover?.kind === 'mob' ? this.hover.o.body : null;
     if (prev?.active && prev.clearTint) prev.clearTint();
+    if (prev?.active && BUILDS[this.hover.o.e?.type]) this.refreshEnt(this.hover.o); // trả lại màu tường hỏng
     this.hover = h;
     if (!h) {
       this.tip.hidden = true;
@@ -1133,6 +1208,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   onPointerDown(p) {
+    if (this.placing && !this.hud.busy) {
+      if (p.button === 2) return this.stopPlacing();
+      if (p.button !== 0) return;
+      const [x, y] = wallCell(p.worldX, p.worldY);
+      if (this.canBuild(this.placing, x, y)) this.target = { kind: 'build', item: this.placing, x, y };
+      return;
+    }
     if (p.button !== 0 || this.hud.busy) return;
     let h = this.pickAt(p.worldX, p.worldY);
     if (!h && this.hud.controls.touch) h = this.pickNear(p.worldX, p.worldY, TAP_SLOP / this.zoom);
@@ -1165,6 +1247,8 @@ export class GameScene extends Phaser.Scene {
     const ranged = t.kind === 'mob' && (ITEMS[this.gear.hand?.id]?.thrown || this.myBoomFlying);
     if (t.kind === 'point') {
       tx = t.x; ty = t.y; range = 6;
+    } else if (t.kind === 'build') {
+      tx = t.x; ty = t.y; range = ACT_RANGE - 10;
     } else if (t.kind === 'feed') {
       const m = this.mobs.get(t.id);
       if (!m) { this.target = null; return [0, 0]; }
@@ -1180,6 +1264,13 @@ export class GameScene extends Phaser.Scene {
     }
     const dx = tx - this.me.x, dy = ty - this.me.y, d = Math.hypot(dx, dy);
     if (d > range) return [dx / d, dy / d];
+    if (t.kind === 'build') {
+      this.target = null;
+      if (this.me.dead || !this.canBuild(t.item, t.x, t.y)) return [0, 0];
+      this.flushPos();
+      this.socket.emit('build', { item: t.item, x: t.x, y: t.y });
+      return [0, 0];
+    }
     if (t.kind === 'point' || this.me.dead) {
       this.target = null;
       return [0, 0];
@@ -1252,6 +1343,10 @@ export class GameScene extends Phaser.Scene {
       // Ra tới bờ biển thì trượt dọc theo bờ chứ không xuống nước.
       const land = clampToLand(this.seed, this.mapR, me.x, me.y);
       if (land) { me.x = land.x; me.y = land.y; }
+      // Tường đá chặn đường: trượt dọc theo tường.
+      const out = pushOutOfWalls(me.x, me.y, WALL.playerR, this.walls);
+      me.x = out.x;
+      me.y = out.y;
       if (dx) me.face = dx < 0 ? -1 : 1;
       me.dir = dirFromVector(dx, dy);
     }
@@ -1480,15 +1575,17 @@ export class GameScene extends Phaser.Scene {
         // Nhân vật ghép mảnh: 4 hướng, đi / đứng thở / đánh (cầm giáo thì đâm), đồ đã có hình thì mặc lên người.
         const d = pl.dir ?? 'down';
         const dir = d.includes('left') ? 'left' : d.includes('right') ? 'right' : d;
-        const anim = time < (pl.attackUntil ?? 0) ? (pl.eq === 'spear' ? 'stab' : 'chop') : pl.moving ? 'walk' : 'idle';
+        const hero = pl.rigChar === 'hero';
+        const attack = hero ? (pl.eq === 'spear' ? 'stab' : 'chop') : 'slash';
+        const anim = time < (pl.attackUntil ?? 0) ? attack : pl.moving ? 'walk' : 'idle';
         const gearKey = `${pl.eq}|${pl.headGear}|${pl.bodyGear}`;
-        if (pl.gearKey !== gearKey) {
+        if (hero && pl.gearKey !== gearKey) {
           pl.gearKey = gearKey;
           equipHero(pl.rig, { hand: pl.eq, head: pl.headGear, body: pl.bodyGear });
         }
         pl.rig.set(dir, anim, time);
         pl.rig.update(time);
-        top = -HERO_H;
+        top = -RIG_CHARS[pl.rigChar].h;
       } else if (pl.sprite) {
         // Hoạt ảnh: chạy khi di chuyển, đứng yên quay mặt ra trước, khựng lại khi bị đánh
         const [base, flip] = DIR_FRAMES[pl.dir ?? 'down'];
@@ -1526,7 +1623,7 @@ export class GameScene extends Phaser.Scene {
       const side = dir.includes('left') ? -1 : dir.includes('right') ? 1 : pl.face;
       const behind = dir.startsWith('up');
       // Đồ mà nhân vật ghép mảnh đã cầm / mặc trên hình thì không vẽ thêm biểu tượng.
-      const onRig = (slot, id) => pl.rig && HERO_GEAR[slot].includes(id);
+      const onRig = (slot, id) => pl.rigChar === 'hero' && HERO_GEAR[slot].includes(id);
       const eq = onRig('hand', pl.eq) ? null : pl.eq;
       const key = eq ? itemSprite(eq) : null;
       pl.itemImg.setVisible(!!key);
@@ -1575,12 +1672,68 @@ export class GameScene extends Phaser.Scene {
       }
     }
     if (pl.dead) pl.stars.setVisible(false);
-    const h = pl.rig ? HERO_H : pl.sprite ? ART_HEIGHT.player : 58;
+    const h = pl.rig ? RIG_CHARS[pl.rigChar].h : pl.sprite ? ART_HEIGHT.player : 58;
     pl.label.setPosition(pl.x, pl.y - h - 8).setScale(1 / this.zoom);
     pl.bubble.setPosition(pl.x, pl.y - h - 8 - 20 / this.zoom).setScale(1 / this.zoom);
   }
 
+  // ---------- Xây tường / cửa ----------
+
+  // Bấm Tường đá / Cửa gỗ (item) trong túi: bóng mờ của công trình bám theo ô lưới dưới con trỏ, nhấp để đi tới xây.
+  startPlacing(item) {
+    if (this.me.dead) return;
+    if (this.target?.kind === 'build') this.target = null;
+    this.placing = item;
+    this.ghost ??= this.add.image(0, 0, 'stonewall').setOrigin(0.5, 1).setAlpha(0.55);
+    this.ghost.setTexture(this.buildTexture({ type: ITEMS[item].build, hp: WALL.hp, open: false }));
+    this.ghost.setScale((WALL.grid + 2) / this.ghost.frame.width).setVisible(false);
+    this.setHover(null);
+  }
+
+  stopPlacing() {
+    if (!this.placing) return;
+    this.placing = null;
+    this.ghost.setVisible(false);
+    this.tip.hidden = true;
+    if (this.target?.kind === 'build') this.target = null;
+  }
+
+  // Món item xây được ở ô lưới (tâm x, y) không: ô trống (cửa thì được đè lên tường đá), không đè vật nào,
+  // không đè người / quái, không sát biển. Server kiểm tra lại y như vậy.
+  canBuild(item, x, y) {
+    const old = this.walls.get(wallKey(x, y));
+    if (old && !(ITEMS[item].build === 'door' && old.type === 'stonewall')) return false;
+    if (coastDist(this.seed, this.mapR, x, y) < WALL.half) return false;
+    const h = WALL.half;
+    for (const o of this.ents.values()) {
+      const e = o.e;
+      if (e !== old && e.type !== 'drop' && Math.abs(e.x - x) < h && Math.abs(e.y - y) < h && Math.hypot(e.x - x, e.y - y) < h) return false;
+    }
+    for (const pl of this.players.values()) if (!pl.dead && wallPush(pl.x, pl.y, WALL.playerR, { x, y })) return false;
+    for (const m of this.mobs.values()) if (wallPush(m.x, m.y, 16, { x, y })) return false;
+    return true;
+  }
+
+  updatePlacing() {
+    const item = this.placing;
+    const left = this.hud.inv.reduce((n, it) => n + (it?.id === item ? it.count : 0), 0);
+    if (!left || this.me.dead) return this.stopPlacing();
+    const p = this.input.activePointer;
+    p.updateWorldPoint(this.cameras.main);
+    const [x, y] = wallCell(p.worldX, p.worldY);
+    const ok = this.canBuild(item, x, y);
+    this.ghost.setPosition(x, y + WALL.half).setDepth(y + WALL.half).setVisible(this.pointerIn || this.hud.controls.touch);
+    this.ghost.setTint(ok ? 0xffffff : 0xff5050);
+    if (this.hud.controls.touch) return;
+    const onWall = item === 'door' && this.walls.get(wallKey(x, y))?.type === 'stonewall';
+    this.tip.textContent = `${onWall ? 'Nhấp để gắn cửa vào tường' : `Nhấp để đặt ${ITEMS[item].name}`} (còn ${left}) · Chuột phải / Esc: thôi`;
+    this.tip.style.left = `${p.x}px`;
+    this.tip.style.top = `${p.y}px`;
+    this.tip.hidden = !this.pointerIn;
+  }
+
   updateHover() {
+    if (this.placing) return this.updatePlacing();
     const p = this.input.activePointer;
     if (!p || !this.pointerIn || this.hud.busy || this.hud.controls.touch) {
       if (this.hover) this.setHover(null);
